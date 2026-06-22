@@ -1,0 +1,24 @@
+# Beroenden
+node_modules/
+
+# Byggresultat
+dist/
+dist-app/
+
+# Databas (känslig data — lagras INTE på GitHub)
+lager.db
+
+# Loggar
+*.log
+npm-debug.log*
+
+# OS-filer
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Electron cache
+.electron/
+
+# Vite cache
+.vite/
