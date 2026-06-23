@@ -73,7 +73,7 @@ const ALL_PERMISSIONS = [
 
 const CATEGORIES = ["Skärmar","Motorhuvar","Stötfångare","Dörrar","Spoilers","Sidokjolar","Bakluckor","Speglar","Rutor","Huvar","Övrigt"];
 const CONDITIONS = ["Ny","Begagnad - Gott skick","Begagnad - Liten spricka","Begagnad - Kräver lackering","Reservdelar / Skrotning"];
-const SIDES = ["","Vänster","Höger","Fram","Bak","Fram Vänster","Fram Höger","Bak Vänster","Bak Höger"];
+const SIDES = ["","Vänster","Höger","Liksidig","Fram","Bak","Fram Vänster","Fram Höger","Bak Vänster","Bak Höger"];
 
 function genId(p="id") { return `${p}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
 
@@ -2576,8 +2576,9 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
                 {/* Action buttons — shown when selected */}
                 {isSel&&(
                   <div style={{display:"flex",gap:8,padding:"0 14px 14px"}} onClick={e=>e.stopPropagation()}>
+                    <Btn variant="ghost" onClick={()=>push("detail",{item})}><i className="fa-solid fa-circle-info"/> Detaljer</Btn>
                     {(can("canSell")||isAdmin)&&item.quantity>0&&(
-                      <Btn variant="red" full onClick={()=>push("sell",{item})}><i className="fa-solid fa-tag"/> Sälj detta exemplar</Btn>
+                      <Btn variant="red" onClick={()=>push("sell",{item})}><i className="fa-solid fa-tag"/> Sälj</Btn>
                     )}
                     {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&(
                       <Btn variant="ghost" onClick={()=>{addToCart(item);toast$(`#${item.stockNumber} tillagd i korgen`,"success");setSelected(null);}}><i className="fa-solid fa-cart-shopping"/></Btn>
@@ -2707,24 +2708,24 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
     ${imgs}
     ${item.stockNumber?`<div class="num">#${item.stockNumber}</div><br/>`:""}
     <h1>${item.name}${item.side?` — ${item.side}`:""}</h1>
-    <h2>${item.sku}${item.oem?` · OEM: ${item.oem}`:""}</h2>
-    <span class="badge">${item.category}</span><span class="badge">${item.condition}</span>
-    <div class="price">${item.price.toLocaleString("sv-SE")} kr</div>
+    <h2>${item.oem?`OEM: ${item.oem}`:""}</h2>
+    <span class="badge">${item.category||""}</span><span class="badge">${item.condition||""}</span>
+    <div class="price">${(item.price||0).toLocaleString("sv-SE")} kr</div>
     <div class="grid">
       ${item.make?`<div class="row"><div class="lbl">Märke</div><div class="val">${item.make} ${item.model||""}</div></div>`:""}
-      ${item.yearFrom?`<div class="row"><div class="lbl">Årsmodell</div><div class="val">${item.yearFrom}${item.yearTo?`–${item.yearTo}`:""}</div></div>`:""}
       ${item.location?`<div class="row"><div class="lbl">Hyllplats</div><div class="val">${item.location}</div></div>`:""}
-      <div class="row"><div class="lbl">Antal i lager</div><div class="val">${item.quantity} st</div></div>
-      ${item.supplier?`<div class="row"><div class="lbl">Leverantör</div><div class="val">${item.supplier}</div></div>`:""}
-      ${item.colorCode?`<div class="row"><div class="lbl">Färgkod</div><div class="val">${item.colorCode}</div></div>`:""}
-      ${item.weight?`<div class="row"><div class="lbl">Vikt</div><div class="val">${item.weight} kg</div></div>`:""}
       ${item.regNumber?`<div class="row"><div class="lbl">Reg.nr</div><div class="val">${item.regNumber}</div></div>`:""}
     </div>
     ${item.notes?`<div style="margin-top:14px;background:#f5f5f7;border-radius:6px;padding:10px;font-size:12px">${item.notes}</div>`:""}
-    <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
     </body></html>`;
-    const w = window.open("","_blank");
-    if(w){w.document.write(html);w.document.close();}
+    // Skapa en blob och öppna i ny flik — fungerar i både webbläsare och Electron
+    const blob = new Blob([html], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
   };
 
   const shareLink = async () => {
