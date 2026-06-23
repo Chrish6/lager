@@ -1,21 +1,21 @@
 {
   "name": "lager",
   "version": "1.0.0",
-  "description": "Lagerhantering för karossdelar",
+  "description": "Lagerhantering f\u00f6r karossdelar",
   "main": "electron-main.js",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "start": "node server.cjs",
     "electron": "electron electron-main.js",
-    "dist": "npm run build && electron-builder --win --x64",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:linux": "npm run build && electron-builder --linux"
+    "dist": "npm run build && electron-builder --win --x64"
   },
   "build": {
     "appId": "se.lager.app",
     "productName": "Lager",
-    "copyright": "Lager",
     "directories": {
       "output": "dist-app"
     },
@@ -26,51 +26,30 @@
       "node_modules/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "node_modules/.bin/node",
-        "to": "node"
-      }
-    ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Lager",
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false,
-      "license": "LICENSE.txt",
       "language": "1053"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns",
-      "category": "public.app-category.business"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png",
-      "category": "Office"
     }
   },
   "dependencies": {
-    "better-sqlite3": "^9.0.0",
     "cors": "^2.8.5",
-    "express": "^5.0.0"
+    "express": "^5.0.0",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
