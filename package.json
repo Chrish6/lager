@@ -46,7 +46,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -55,7 +56,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Lager",
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "installerIcon": "assets/icon.ico"
     },
     "npmRebuild": false
   },
