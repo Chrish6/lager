@@ -1,23 +1,47 @@
-// ─── Lager — Electron main process ───────────────────────────────────────────
-// Logik:
-//  1. Försök nå en redan körande server på localhost:3000 (Windows-tjänst eller manuell start)
-//  2. Om ingen lokal server hittas — scanna nätverket efter en Lager-server (t.ex. Raspberry Pi)
-//  3. Om ingen server hittas alls — starta en lokal server själv
-//  4. Öppna fönstret mot den server som svarar
-//
-// Resultatet: appen hittar alltid sin server automatiskt oavsett var den körs.
-
+// ─── Lager — Electron main process med auto-update ───────────────────────────
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const http = require("http");
 const os   = require("os");
 
 const PORT    = 3000;
-const TIMEOUT = 800; // ms per IP vid scanning
+const TIMEOUT = 800;
 
 let mainWindow = null;
 let tray       = null;
 let serverUrl  = null;
+
+// ─── Auto-update ──────────────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", () => {
+    if (mainWindow) {
+      mainWindow.webContents.executeJavaScript(`
+        if (window.toast$) window.toast$("Ny version laddas ner...", "info");
+      `).catch(() => {});
+    }
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    const choice = dialog.showMessageBoxSync({
+      type: "info",
+      title: "Uppdatering klar",
+      message: "En ny version av Lager är nedladdad.\nVill du installera och starta om nu?",
+      buttons: ["Ja, installera nu", "Senare"],
+      defaultId: 0,
+    });
+    if (choice === 0) autoUpdater.quitAndInstall();
+  });
+
+  autoUpdater.on("error", () => {}); // Tyst vid fel
+
+  // Kolla efter uppdateringar var 4:e timme
+  autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
+}
 
 // ─── Kontrollera om en specifik host:port svarar som Lager-server ─────────────
 function probeLagerServer(host, port) {
@@ -164,6 +188,9 @@ app.whenReady().then(async () => {
   ]));
 
   createWindow(serverUrl);
+
+  // Starta auto-updater efter att fönstret öppnats
+  if (!process.env.DEV) setupAutoUpdater();
 });
 
 app.on("activate", () => {
