@@ -1212,10 +1212,13 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
       const errs = [];
       const existingStockNumbers = new Set(items.map(i=>i.stockNumber));
       const usedInBatch = new Set();
-      let autoStock = (() => {
-        const nums = items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n));
-        return nums.length > 0 ? Math.max(...nums) : 0;
-      })();
+
+      // Hitta minsta fria lagernummer
+      const nextFreeStock = (used) => {
+        let n = 1;
+        while (used.has(String(n))) n++;
+        return String(n);
+      };
 
       const mapped = rows.map((row, idx) => {
         const item = { id: genId("imp"), images: [], updatedAt: Date.now() };
@@ -1235,14 +1238,13 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
         if (!item.oem?.trim()) errs.push(`Rad ${idx+2}: Artikelnummer saknas`);
         if (!item.location?.trim()) errs.push(`Rad ${idx+2}: Lagerplats saknas`);
 
-        // Lagernummer — använd angivet, annars auto-generera nästa lediga
+        // Lagernummer — använd angivet, annars auto-generera minsta fria
         if (!item.stockNumber?.trim()) {
-          autoStock++;
-          item.stockNumber = String(autoStock);
+          const free = nextFreeStock(new Set([...existingStockNumbers, ...usedInBatch]));
+          item.stockNumber = free;
         } else if (existingStockNumbers.has(item.stockNumber) || usedInBatch.has(item.stockNumber)) {
           errs.push(`Rad ${idx+2}: Lagernummer ${item.stockNumber} används redan — bytt automatiskt`);
-          autoStock++;
-          item.stockNumber = String(autoStock);
+          item.stockNumber = nextFreeStock(new Set([...existingStockNumbers, ...usedInBatch]));
         }
         usedInBatch.add(item.stockNumber);
 
@@ -1271,9 +1273,37 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
   const doImport = async () => {
     setImporting(true);
     try {
-      // Dubbla artikelnummer/SKU är avsiktligt (flera exemplar av samma del)
-      // grupperas automatiskt ihop i lagret — ingen omskrivning behövs.
-      const newItems = mode === "replace" ? parsed : [...items, ...parsed];
+      let newItems;
+      if (mode === "replace") {
+        // Nollställ — börja om från 1 med minsta fria nummer
+        const usedReplace = new Set();
+        const nextFree = (used) => { let n=1; while(used.has(String(n))) n++; return String(n); };
+        newItems = parsed.map(p => {
+          if (!p.stockNumber?.trim()) {
+            p.stockNumber = nextFree(usedReplace);
+          }
+          usedReplace.add(p.stockNumber);
+          return p;
+        });
+      } else if (mode === "sync") {
+        // Synka — uppdatera befintliga (samma lagernummer), lägg till nya
+        const existingByStock = {};
+        items.forEach(i => { if (i.stockNumber) existingByStock[i.stockNumber] = i; });
+        const merged = [...items];
+        parsed.forEach(p => {
+          const existing = existingByStock[p.stockNumber];
+          if (existing) {
+            // Uppdatera befintlig — bevara bilder och id
+            const idx = merged.findIndex(i => i.id === existing.id);
+            if (idx >= 0) merged[idx] = { ...p, id: existing.id, images: existing.images || [] };
+          } else {
+            merged.push(p);
+          }
+        });
+        newItems = merged;
+      } else {
+        newItems = [...items, ...parsed];
+      }
       await saveItems(newItems);
       toast$(`${parsed.length} artiklar importerade!`, "success");
       setStep("done");
@@ -1344,8 +1374,8 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
             {/* Importläge */}
             <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Importläge</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                {[["add","Lägg till",`Lägger till ${parsed.length} nya artiklar`],["replace","Ersätt allt",`Tar bort ${items.length} befintliga, lägger in ${parsed.length} nya`]].map(([k,l,desc])=>(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                {[["add","Lägg till",`Lägger till ${parsed.length} nya artiklar`],["sync","Synka",`Uppdaterar befintliga, lägger till nya — inga dubbletter`],["replace","Ersätt allt",`Tar bort ${items.length} befintliga, lägger in ${parsed.length} nya`]].map(([k,l,desc])=>(
                   <button key={k} onClick={()=>setMode(k)} style={{padding:"12px 10px",borderRadius:8,border:`2px solid ${mode===k?B:BD}`,background:mode===k?B+"08":WH,textAlign:"left",cursor:"pointer"}}>
                     <div style={{fontWeight:700,fontSize:13,color:mode===k?B:TX,marginBottom:3}}>{l}</div>
                     <div style={{fontSize:11,color:MU}}>{desc}</div>
@@ -1574,12 +1604,19 @@ function ActivityLogPage({ activityLog, isAdmin, pop }) {
 }
 
 // ─── Settings Page ────────────────────────────────────────────────────────────
-function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, toast$, can, isAdmin }) {
+function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, toast$, can, isAdmin, saveItems }) {
   if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="Inställningar" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [f, setF] = useState(settings||{});
+  const [confirmClear, setConfirmClear] = useState(false);
   const U = (k,v) => setF(p=>({...p,[k]:v}));
 
   const save = async () => { await saveSettings(f); toast$("Inställningar sparade","success"); };
+
+  const clearInventory = async () => {
+    await saveItems([]);
+    toast$("Lagret nollställt","success");
+    setConfirmClear(false);
+  };
 
   return (
     <Page>
@@ -1632,12 +1669,43 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
           </div>
         </div>
 
+        {/* Farliga åtgärder */}
+        <div style={{background:WH,borderRadius:10,border:`1.5px solid ${R}30`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:R,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Farliga åtgärder</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontWeight:600,fontSize:13}}>Nollställ lagret</div>
+              <div style={{fontSize:11,color:MU,marginTop:2}}>Tar bort alla artiklar — användare och försäljningar påverkas inte</div>
+            </div>
+            <button onClick={()=>setConfirmClear(true)} style={{background:R,color:WH,border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0,marginLeft:12}}>
+              <Icon name="trash"/> Nollställ
+            </button>
+          </div>
+        </div>
+
       </div>
+
+      {/* Bekräftelsedialog */}
+      {confirmClear&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}} onClick={()=>setConfirmClear(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:24,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:8,color:R}}>⚠ Nollställ lagret?</div>
+            <div style={{fontSize:13,color:TM,marginBottom:20,lineHeight:1.5}}>
+              Detta tar bort <strong>alla {items?.length||0} artiklar</strong> permanent.<br/>
+              Användare, försäljningar och inställningar påverkas inte.<br/>
+              <strong style={{color:R}}>Kan inte ångras.</strong>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmClear(false)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={clearInventory}>Ja, nollställ lagret</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
     </Page>
   );
 }
-
-// ─── Bulk Edit Page ───────────────────────────────────────────────────────────
 function BulkEditPage({ items, saveItems, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBulkEdit")) return <Page><TopBar title="Massredigering" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [selected, setSelected] = useState(new Set());
@@ -2978,8 +3046,10 @@ const H = ({children}) => <div style={{flex:1,minWidth:0}}>{children}</div>;
 // ─── Edit Page ────────────────────────────────────────────────────────────────
 function EditPage({ item, items, saveItems, pop, toast$ }) {
   const nextStockNumber = () => {
-    const nums = items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n));
-    return nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
+    const used = new Set(items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
+    let n = 1;
+    while (used.has(n)) n++;
+    return String(n);
   };
   const [f, setF] = useState(item ? {...item} : {name:"",stockNumber:nextStockNumber(),side:"",category:"Skärmar",quantity:1,price:0,costPrice:0,supplier:"",location:"",weight:"",colorCode:"",oem:"",description:"",condition:"Begagnad - Gott skick",compatible:"",make:"",model:"",yearFrom:"",yearTo:"",regNumber:"",notes:"",images:[]});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
