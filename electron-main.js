@@ -105,16 +105,9 @@ async function findServer() {
     return `http://${remoteHost}:${PORT}`;
   }
 
-  // 3. Starta lokal server i bakgrunden — ingen terminal visas
-  console.log("[discovery] Ingen nätverksserver — startar lokal server...");
-  startLocalServer();
-
-  return new Promise(resolve => {
-    waitForServer(ok => {
-      if (ok) resolve(`http://127.0.0.1:${PORT}`);
-      else resolve(null);
-    });
-  });
+  // 3. Ingen server hittad — visa tydligt felmeddelande
+  console.log("[discovery] Ingen server hittades.");
+  return null;
 }
 
 // ─── Skapa fönstret ───────────────────────────────────────────────────────────
