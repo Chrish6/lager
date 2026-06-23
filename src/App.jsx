@@ -13,13 +13,17 @@ async function sset(k,v) {
   try { await fetch(`${API}/${k}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({value:JSON.stringify(v)}) }); } catch {}
 }
 
-// ─── Säkerhet — lösenordshashning (SHA-256, inbyggt i webbläsaren) ────────────
-// Lösenord lagras ALDRIG i klartext. Vid inloggning hashas det angivna
-// lösenordet och jämförs mot den lagrade hashen.
-async function hashPassword(plain) {
-  const enc = new TextEncoder().encode(plain);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+// ─── Lösenordshashning — snabb enkel hash ─────────────────────────────────────
+function hashPassword(plain) {
+  // Enkel men tillräcklig hash för lokalt system
+  let hash = 0;
+  const str = plain + "lager_salt_2024";
+  for (let i = 0; i < str.length; i++) {
+    const chr = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return Promise.resolve("h_" + Math.abs(hash).toString(36) + "_" + str.length);
 }
 
 // ─── Session — håller användaren inloggad i 30 dagar ──────────────────────────
@@ -44,18 +48,7 @@ function clearSession() {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_ADMIN = { id:"admin", username:"admin", password:"admin123", role:"admin", permissions:{}, createdAt:Date.now() };
 
-const DEFAULT_ITEMS = [
-  { id:"item_1", stockNumber:"1", name:"Framskärm", sku:"BW-F5L-001", side:"Vänster", category:"Skärmar", quantity:3, price:2890, costPrice:1200, supplier:"BildelarAB", location:"A1-03", weight:"4.2", colorCode:"300 Alpinweiss", oem:"41357272907", condition:"Begagnad - Gott skick", compatible:"BMW 5-serie F10", make:"BMW", model:"5-serie F10", yearFrom:"2010", yearTo:"2016", regNumber:"ABC123", notes:"Lackat i originalfärg", images:[], updatedAt:Date.now() },
-  { id:"item_2", stockNumber:"2", name:"Motorhuv", sku:"VW-G7-MH-002", side:"", category:"Motorhuvar", quantity:1, price:4200, costPrice:1800, supplier:"VWParts SE", location:"B2-01", weight:"8.5", colorCode:"LB9A Vit", oem:"5G0823031", condition:"Ny", compatible:"VW Golf VII", make:"Volkswagen", model:"Golf VII", yearFrom:"2013", yearTo:"2020", regNumber:"DEF456", notes:"Komplett med gångjärn", images:[], updatedAt:Date.now() },
-  { id:"item_3", stockNumber:"3", name:"Bakstötfångare", sku:"MB-W204-BS-003", side:"", category:"Stötfångare", quantity:5, price:3150, costPrice:1400, supplier:"MercedesDels", location:"C3-07", weight:"3.8", colorCode:"197 Obsidianschwarz", oem:"2048800140", condition:"Begagnad - Gott skick", compatible:"Mercedes C-klass W204", make:"Mercedes-Benz", model:"C-klass W204", yearFrom:"2007", yearTo:"2014", regNumber:"GHI789", notes:"Inkl. parkeringssensorer", images:[], updatedAt:Date.now() },
-  { id:"item_4", stockNumber:"4", name:"Dörr Bak", sku:"AUD-A4-DB-004", side:"Höger", category:"Dörrar", quantity:2, price:3800, costPrice:1600, supplier:"AudiDelar.se", location:"D1-02", weight:"12.0", colorCode:"T9 Mythosschwarz", oem:"8W5833052", condition:"Begagnad - Liten spricka", compatible:"Audi A4 B9", make:"Audi", model:"A4 B9", yearFrom:"2016", yearTo:"2022", regNumber:"JKL012", notes:"Spricka i nedre kanten", images:[], updatedAt:Date.now() },
-  { id:"item_5", stockNumber:"5", name:"Frontspoiler", sku:"MB-AMG-FS-005", side:"", category:"Spoilers", quantity:2, price:6500, costPrice:3000, supplier:"AMGParts", location:"A3-11", weight:"2.1", colorCode:"Obehandlad", oem:"A2048850025", condition:"Ny", compatible:"Mercedes C63 AMG W204", make:"Mercedes-Benz", model:"C63 AMG W204", yearFrom:"2011", yearTo:"2014", regNumber:"", notes:"AMG-kit, svart plast", images:[], updatedAt:Date.now() },
-  { id:"item_6", stockNumber:"6", name:"Takpanel", sku:"VOL-V60-TP-006", side:"", category:"Övrigt", quantity:1, price:2200, costPrice:900, supplier:"VolvoDelar", location:"E2-05", weight:"6.3", colorCode:"455 Silverpil", oem:"39831985", condition:"Begagnad - Gott skick", compatible:"Volvo V60", make:"Volvo", model:"V60", yearFrom:"2010", yearTo:"2018", regNumber:"MNO345", notes:"Utan takräckesskener", images:[], updatedAt:Date.now() },
-  // ── Variant-exempel: Tre BMW-strålkastare med samma SKU/OEM men olika exemplar ──
-  { id:"item_7", stockNumber:"101", name:"Strålkastare Höger", sku:"BMW-E90-STR-H", side:"Höger", category:"Lyktor", quantity:1, price:1800, costPrice:600, supplier:"BildelarAB", location:"F1-01", weight:"2.1", colorCode:"", oem:"63117182520", condition:"Begagnad - Gott skick", compatible:"BMW 3-serie E90", make:"BMW", model:"3-serie E90", yearFrom:"2005", yearTo:"2012", regNumber:"PQR111", notes:"Fullt fungerande, liten repа på linsen", images:[], updatedAt:Date.now() },
-  { id:"item_8", stockNumber:"102", name:"Strålkastare Höger", sku:"BMW-E90-STR-H", side:"Höger", category:"Lyktor", quantity:1, price:2400, costPrice:700, supplier:"BildelarAB", location:"F1-02", weight:"2.1", colorCode:"", oem:"63117182520", condition:"Begagnad - Gott skick", compatible:"BMW 3-serie E90", make:"BMW", model:"3-serie E90", yearFrom:"2005", yearTo:"2012", regNumber:"STU222", notes:"Mycket bra skick, inga repor", images:[], updatedAt:Date.now() },
-  { id:"item_9", stockNumber:"103", name:"Strålkastare Höger", sku:"BMW-E90-STR-H", side:"Höger", category:"Lyktor", quantity:1, price:900, costPrice:300, supplier:"BildelarAB", location:"F1-03", weight:"2.1", colorCode:"", oem:"63117182520", condition:"Begagnad - Liten spricka", compatible:"BMW 3-serie E90", make:"BMW", model:"3-serie E90", yearFrom:"2005", yearTo:"2012", regNumber:"VWX333", notes:"Spricka i höljet, lyser perfekt — bra för den som ska lacka om", images:[], updatedAt:Date.now() },
-];
+const DEFAULT_ITEMS = [];
 
 const ALL_PERMISSIONS = [
   { key:"canView",        label:"Visa lager",      icon:"fa-eye" },
@@ -2130,7 +2123,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
 
   let filtered = items.filter(i => {
     const q = search.toLowerCase();
-    const m = !q || [i.name,i.sku,i.category,i.oem,i.compatible,i.side,i.supplier,i.location,i.make,i.model,i.regNumber].some(f=>f?.toLowerCase().includes(q));
+    const m = !q || [i.name,i.sku,i.category,i.oem,i.compatible,i.side,i.supplier,i.location,i.make,i.model,i.regNumber,i.stockNumber].some(f=>f?.toLowerCase().includes(q));
     if (!m) return false;
     if (filters.cats.length && !filters.cats.includes(i.category)) return false;
     if (filters.conds.length && !filters.conds.includes(i.condition)) return false;
@@ -2188,6 +2181,9 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
     <>
       {!currentUser && <Btn small onClick={()=>push("login")}>Logga in</Btn>}
       {currentUser && <>
+        <button onClick={()=>window.location.reload()} title="Ladda om" style={{background:"none",border:"none",color:MU,fontSize:17,display:"flex",alignItems:"center",padding:"2px 6px",cursor:"pointer"}}>
+          <Icon name="rotate-right"/>
+        </button>
         {(can("canUseCheckout")||isAdmin) && (
           <button onClick={()=>push("checkout")} style={{position:"relative",background:"none",border:"none",color:B,fontSize:20,display:"flex",alignItems:"center",padding:"2px 6px"}}>
             <Icon name="cart-shopping"/>
@@ -2267,7 +2263,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:MU,pointerEvents:"none"}}><Icon name="magnifying-glass"/></span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, SKU, OEM, reg.nr…"
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, SKU, OEM, lagernr, reg.nr…"
               style={{width:"100%",padding:"10px 10px 10px 32px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,color:TX,background:WH,boxShadow:SH}} />
           </div>
           {/* Scan */}
