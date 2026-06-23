@@ -1,41 +1,38 @@
 @echo off
 chcp 65001 >nul
-title Lager â€” Installation
+title Lager Installation
 echo.
 echo  ========================================
-echo     Lager â€” Forsta gangs-installation
+echo     Lager - Installation
 echo  ========================================
 echo.
-
 cd /d "%~dp0"
-
-echo  Kontrollerar Node.js...
-node --version >nul 2>&1
+echo  Kontrollerar Node.js version...
+node --version 2>nul | findstr "v20" >nul
 if errorlevel 1 (
-  echo  FEL: Node.js hittades inte!
-  echo  Installera fran: https://nodejs.org
-  pause & exit /b 1
+    echo  Installerar Node.js 20 LTS...
+    winget install OpenJS.NodeJS.LTS --version 20.19.2 --silent
+    if errorlevel 1 (
+        echo  FEL: Kör terminalen som administratör
+        pause
+        exit /b 1
+    )
+    echo  Startar om...
+    start "" "%~f0"
+    exit
 )
-
-echo  [1/3] Installerar npm-paket...
+echo  Node.js OK
+echo.
+echo  [1/2] Installerar paket...
 call npm install
-if errorlevel 1 ( echo  FEL: npm install misslyckades! & pause & exit /b 1 )
-
-echo  [2/3] Installerar Electron...
-call npm install electron electron-packager --save-dev
-if errorlevel 1 ( echo  FEL: Electron install misslyckades! & pause & exit /b 1 )
-
-echo  [3/3] Bygger appen...
+if errorlevel 1 ( echo  FEL & pause & exit /b 1 )
+echo.
+echo  [2/2] Bygger appen...
 call npm run build
-if errorlevel 1 ( echo  FEL: Byggfel! & pause & exit /b 1 )
-
+if errorlevel 1 ( echo  FEL & pause & exit /b 1 )
 echo.
 echo  ========================================
-echo     Klar!
-echo.
-echo     WebblÃ¤sare:  dubbelklicka STARTA.bat
-echo     Desktop-app: dubbelklicka STARTA_APP.bat
-echo     Bygg .exe:   dubbelklicka BYGG_EXE.bat
+echo     Klar! Starta med STARTA.bat
 echo  ========================================
 echo.
 pause
