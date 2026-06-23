@@ -1,6 +1,5 @@
-// ─── Lager — Electron main process med auto-update ───────────────────────────
+// ─── Lager — Electron main process ───────────────────────────────────────────
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require("electron");
-const { autoUpdater } = require("electron-updater");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
@@ -33,37 +32,6 @@ function waitForServer(callback, attempts = 0) {
   const client = net.createConnection({ port: PORT, host: "127.0.0.1" });
   client.on("connect", () => { client.destroy(); callback(true); });
   client.on("error", () => setTimeout(() => waitForServer(callback, attempts + 1), 500));
-}
-
-// ─── Auto-update ──────────────────────────────────────────────────────────────
-function setupAutoUpdater() {
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("update-available", () => {
-    if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(`
-        if (window.toast$) window.toast$("Ny version laddas ner...", "info");
-      `).catch(() => {});
-    }
-  });
-
-  autoUpdater.on("update-downloaded", () => {
-    const choice = dialog.showMessageBoxSync({
-      type: "info",
-      title: "Uppdatering klar",
-      message: "En ny version av Lager är nedladdad.\nVill du installera och starta om nu?",
-      buttons: ["Ja, installera nu", "Senare"],
-      defaultId: 0,
-    });
-    if (choice === 0) autoUpdater.quitAndInstall();
-  });
-
-  autoUpdater.on("error", () => {}); // Tyst vid fel
-
-  // Kolla efter uppdateringar var 4:e timme
-  autoUpdater.checkForUpdates().catch(() => {});
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
 }
 
 // ─── Kontrollera om en specifik host:port svarar som Lager-server ─────────────
@@ -218,9 +186,6 @@ app.whenReady().then(async () => {
   ]));
 
   createWindow(serverUrl);
-
-  // Starta auto-updater efter att fönstret öppnats
-  if (!process.env.DEV) setupAutoUpdater();
 });
 
 app.on("before-quit", () => {
