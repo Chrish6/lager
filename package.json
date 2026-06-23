@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "start": "node server.cjs",
-    "electron": "electron electron-main.js",
+    "electron": "npx electron .",
     "dist": "npm run build && electron-builder --win --x64 --publish always"
   },
   "build": {
@@ -27,27 +27,39 @@
     "files": [
       "dist/**/*",
       "electron-main.js",
-      "package.json"
+      "package.json",
+      "server.cjs",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "!node_modules/electron*",
+      "!node_modules/vite*",
+      "!node_modules/@vitejs*",
+      "!node_modules/electron-builder*"
     ],
+    "extraResources": [],
+    "asar": true,
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Lager",
       "runAfterFinish": true,
       "language": "1053"
-    }
+    },
+    "npmRebuild": false
   },
   "dependencies": {
     "cors": "^2.8.5",
