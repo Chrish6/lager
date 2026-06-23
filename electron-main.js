@@ -1,38 +1,15 @@
 // ─── Lager — Electron main process ───────────────────────────────────────────
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require("electron");
-const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
-const net  = require("net");
 const os   = require("os");
 
 const PORT    = 3000;
 const TIMEOUT = 800;
 
-let mainWindow   = null;
-let tray         = null;
-let serverUrl    = null;
-let serverProcess = null;
-
-// ─── Starta lokal server i bakgrunden (ingen terminal visas) ──────────────────
-function startLocalServer() {
-  const serverPath = path.join(__dirname, "server.cjs");
-  serverProcess = spawn(process.execPath, [serverPath], {
-    cwd: __dirname,
-    detached: false,
-    windowsHide: true, // Döljer terminalfönstret helt
-    stdio: "ignore",
-  });
-  serverProcess.unref();
-}
-
-// ─── Vänta tills servern svarar ───────────────────────────────────────────────
-function waitForServer(callback, attempts = 0) {
-  if (attempts > 30) { callback(false); return; }
-  const client = net.createConnection({ port: PORT, host: "127.0.0.1" });
-  client.on("connect", () => { client.destroy(); callback(true); });
-  client.on("error", () => setTimeout(() => waitForServer(callback, attempts + 1), 500));
-}
+let mainWindow = null;
+let tray       = null;
+let serverUrl  = null;
 
 // ─── Kontrollera om en specifik host:port svarar som Lager-server ─────────────
 function probeLagerServer(host, port) {
@@ -116,6 +93,7 @@ function createWindow(url) {
     width: 1280, height: 820, minWidth: 800, minHeight: 600,
     title: "Lager",
     backgroundColor: "#F5F5F7",
+    autoHideMenuBar: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
     show: false,
   });
@@ -179,10 +157,6 @@ app.whenReady().then(async () => {
   ]));
 
   createWindow(serverUrl);
-});
-
-app.on("before-quit", () => {
-  if (serverProcess) { serverProcess.kill(); serverProcess = null; }
 });
 
 app.on("activate", () => {
