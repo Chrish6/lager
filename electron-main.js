@@ -1,16 +1,39 @@
 // ─── Lager — Electron main process med auto-update ───────────────────────────
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
+const net  = require("net");
 const os   = require("os");
 
 const PORT    = 3000;
 const TIMEOUT = 800;
 
-let mainWindow = null;
-let tray       = null;
-let serverUrl  = null;
+let mainWindow   = null;
+let tray         = null;
+let serverUrl    = null;
+let serverProcess = null;
+
+// ─── Starta lokal server i bakgrunden (ingen terminal visas) ──────────────────
+function startLocalServer() {
+  const serverPath = path.join(__dirname, "server.cjs");
+  serverProcess = spawn(process.execPath, [serverPath], {
+    cwd: __dirname,
+    detached: false,
+    windowsHide: true, // Döljer terminalfönstret helt
+    stdio: "ignore",
+  });
+  serverProcess.unref();
+}
+
+// ─── Vänta tills servern svarar ───────────────────────────────────────────────
+function waitForServer(callback, attempts = 0) {
+  if (attempts > 30) { callback(false); return; }
+  const client = net.createConnection({ port: PORT, host: "127.0.0.1" });
+  client.on("connect", () => { client.destroy(); callback(true); });
+  client.on("error", () => setTimeout(() => waitForServer(callback, attempts + 1), 500));
+}
 
 // ─── Auto-update ──────────────────────────────────────────────────────────────
 function setupAutoUpdater() {
@@ -114,9 +137,16 @@ async function findServer() {
     return `http://${remoteHost}:${PORT}`;
   }
 
-  // 3. Ingen server hittad — visa fel
-  console.log("[discovery] Ingen server hittades på nätverket.");
-  return null;
+  // 3. Starta lokal server i bakgrunden — ingen terminal visas
+  console.log("[discovery] Ingen nätverksserver — startar lokal server...");
+  startLocalServer();
+
+  return new Promise(resolve => {
+    waitForServer(ok => {
+      if (ok) resolve(`http://127.0.0.1:${PORT}`);
+      else resolve(null);
+    });
+  });
 }
 
 // ─── Skapa fönstret ───────────────────────────────────────────────────────────
@@ -191,6 +221,10 @@ app.whenReady().then(async () => {
 
   // Starta auto-updater efter att fönstret öppnats
   if (!process.env.DEV) setupAutoUpdater();
+});
+
+app.on("before-quit", () => {
+  if (serverProcess) { serverProcess.kill(); serverProcess = null; }
 });
 
 app.on("activate", () => {
