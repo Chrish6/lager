@@ -172,7 +172,20 @@ const CSS = `
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:${BG};}
-body{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
+body{
+  padding-top:env(safe-area-inset-top);
+  padding-left:env(safe-area-inset-left);
+  padding-right:env(safe-area-inset-right);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+/* Blockera zoom på inputs för mobil */
+@media (max-width:768px){
+  input,select,textarea{font-size:16px!important;}
+}
+/* Landscape på mobil */
+@media (max-width:768px) and (orientation:landscape){
+  .page{padding-bottom:env(safe-area-inset-bottom)!important;}
+}
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
@@ -2749,51 +2762,46 @@ function GroupCard({ group, can, onOpen }) {
   const location = [best.locationType, best.location].filter(Boolean).join(" ");
 
   return (
-    <div onClick={onOpen} style={{background:WH,borderRadius:10,border:`1.5px solid ${BD}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%",position:"relative"}}>
+    <div onClick={onOpen} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:"10px 12px",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,position:"relative",minHeight:100}}>
 
-      {/* Placering — top right */}
-      {location&&(
-        <div style={{position:"absolute",top:10,right:10,background:B+"10",borderRadius:5,padding:"3px 7px",display:"flex",alignItems:"center",gap:4,maxWidth:"45%"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:9,color:B,flexShrink:0}}/>
-          <span style={{fontSize:10,fontWeight:700,color:B,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{location}</span>
-        </div>
-      )}
-
-      <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8,paddingRight:location?100:0}}>
-        {/* Image */}
-        <div style={{flexShrink:0,width:52,height:52,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+      {/* Rad 1: bild + info */}
+      <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
+        <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
           {best.images?.[0]?<img src={best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
         </div>
-        {/* Info */}
         <div style={{flex:1,minWidth:0}}>
-          {/* Lagernummer — liten, diskret */}
-          <div style={{display:"flex",gap:4,marginBottom:3,flexWrap:"wrap"}}>
+          {/* Lagernummer — blå */}
+          <div style={{display:"flex",gap:3,marginBottom:2,flexWrap:"wrap"}}>
             {group.map(item=>(
-              <span key={item.id} style={{background:BG,color:MU,border:`1px solid ${BD}`,borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
+              <span key={item.id} style={{background:B,color:WH,borderRadius:5,padding:"1px 6px",fontSize:11,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
             ))}
           </div>
-          {/* Namn */}
-          <div style={{fontWeight:700,fontSize:14,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
-          {/* Märke + koncern */}
-          {best.make&&<div style={{fontSize:10,color:MU,marginTop:1}}>
-            {best.make}{brandGroup?<span style={{color:B,marginLeft:4,fontWeight:600}}>({brandGroup})</span>:null}
-          </div>}
-          {/* Artikelnummer — större */}
-          {best.oem&&<div style={{fontSize:12,fontWeight:700,color:TX,fontFamily:"monospace",marginTop:3}}>{best.oem}</div>}
-        </div>
-        {/* Antal — alltid grön utom noll=röd */}
-        <div style={{flexShrink:0,textAlign:"right",marginLeft:4}}>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR,lineHeight:1}}>{totalQty}</div>
-          <div style={{fontSize:10,color:MU}}>st</div>
+          <div style={{fontWeight:700,fontSize:13,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
+          {best.make&&<div style={{fontSize:10,color:MU}}>{best.make}{brandGroup?<span style={{color:B,marginLeft:3,fontWeight:600}}>({brandGroup})</span>:null}</div>}
+          {best.oem&&<div style={{fontSize:11,fontWeight:700,color:TX,fontFamily:"monospace"}}>{best.oem}</div>}
         </div>
       </div>
 
-      {/* Bottom: price + hint */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${BD}`,marginTop:"auto"}}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:B}}>
+      {/* Antal — nere till höger */}
+      <div style={{position:"absolute",bottom:10,right:12,textAlign:"right"}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR,lineHeight:1}}>{totalQty}</div>
+        <div style={{fontSize:9,color:MU}}>st</div>
+      </div>
+
+      {/* Placering — större */}
+      {location&&(
+        <div style={{display:"flex",alignItems:"center",gap:5,background:B+"08",borderRadius:6,padding:"4px 8px"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B}}/>
+          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
+        </div>
+      )}
+
+      {/* Pris + exemplar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:60}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:800,color:B}}>
           {prices.length===0?"—":minP===maxP?`${minP.toLocaleString("sv-SE")} kr`:`${minP.toLocaleString("sv-SE")}–${maxP.toLocaleString("sv-SE")} kr`}
         </div>
-        <div style={{fontSize:11,color:B,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+        <div style={{fontSize:11,color:B,fontWeight:600,display:"flex",alignItems:"center",gap:3}}>
           {group.length} exemplar <i className="fa-solid fa-chevron-right" style={{fontSize:10}}/>
         </div>
       </div>
@@ -2922,38 +2930,38 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
   return (
-    <div onClick={onDetail} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%",position:"relative"}}>
+    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:"10px 12px",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,position:"relative",minHeight:100}}>
 
-      {/* Placering — top right */}
-      {location&&(
-        <div style={{position:"absolute",top:10,right:10,background:B+"10",borderRadius:5,padding:"3px 7px",display:"flex",alignItems:"center",gap:4,maxWidth:"45%"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:9,color:B,flexShrink:0}}/>
-          <span style={{fontSize:10,fontWeight:700,color:B,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{location}</span>
-        </div>
-      )}
-
-      <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10,paddingRight:location?100:0}}>
-        {/* Image */}
-        <div style={{flexShrink:0,width:52,height:52,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+      {/* Rad 1: lagernummer blå + namn */}
+      <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
+        <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
           {item.images?.[0]?<img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
         </div>
-        {/* Info */}
         <div style={{flex:1,minWidth:0}}>
-          {item.stockNumber&&<span style={{background:BG,color:MU,border:`1px solid ${BD}`,borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,letterSpacing:.3,display:"inline-block",marginBottom:3}}>#{item.stockNumber}</span>}
-          <div style={{fontWeight:700,fontSize:14,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
-          {item.make&&<div style={{fontSize:10,color:MU,marginTop:1}}>{item.make}{item.model?` ${item.model}`:""}</div>}
-          {item.oem&&<div style={{fontSize:12,fontWeight:700,color:TX,fontFamily:"monospace",marginTop:3}}>{item.oem}</div>}
-        </div>
-        {/* Antal — alltid grön utom noll=röd */}
-        <div style={{flexShrink:0,textAlign:"right",marginLeft:4}}>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR,lineHeight:1}}>{item.quantity}</div>
-          <div style={{fontSize:10,color:MU}}>st</div>
+          {item.stockNumber&&<div style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,display:"inline-block",marginBottom:3,letterSpacing:.3}}>#{item.stockNumber}</div>}
+          <div style={{fontWeight:700,fontSize:13,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
+          {item.make&&<div style={{fontSize:10,color:MU}}>{item.make}{item.model?` ${item.model}`:""}</div>}
+          {item.oem&&<div style={{fontSize:11,fontWeight:700,color:TX,fontFamily:"monospace"}}>{item.oem}</div>}
         </div>
       </div>
 
-      {/* Price + buttons */}
-      <div style={{display:"flex",alignItems:"center",gap:6,paddingTop:10,borderTop:`1px solid ${BD}`,marginTop:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:B,marginRight:"auto"}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
+      {/* Antal — nere till höger */}
+      <div style={{position:"absolute",bottom:10,right:12,textAlign:"right"}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR,lineHeight:1}}>{item.quantity}</div>
+        <div style={{fontSize:9,color:MU}}>st</div>
+      </div>
+
+      {/* Placering — större */}
+      {location&&(
+        <div style={{display:"flex",alignItems:"center",gap:5,background:B+"08",borderRadius:6,padding:"4px 8px"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B}}/>
+          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
+        </div>
+      )}
+
+      {/* Pris + knappar */}
+      <div style={{display:"flex",alignItems:"center",gap:5,paddingRight:60}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:800,color:B,marginRight:"auto"}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
         {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
         {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
         {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
