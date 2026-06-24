@@ -340,7 +340,8 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     { icon:"qrcode",       label:"Skanna",         route:"scan",       show:(isAdmin||can("canScan")) },
     { icon:"file-import",  label:"Importera",      route:"import",     show:(isAdmin||can("canImport")) },
     { icon:"layer-group",  label:"Massredigera",   route:"bulkedit",   show:(isAdmin||can("canBulkEdit")) },
-    { icon:"qrcode",       label:"QR-etiketter",   route:"qrlabels",   show:isAdmin },
+    { icon:"qrcode",       label:"Etiketter",       route:"qrlabels",   show:isAdmin },
+    { icon:"location-dot", label:"Platser",          route:"locationview", show:(isAdmin||can("canView")) },
     { icon:"truck",        label:"Leverantörer",   route:"suppliers",  show:(isAdmin||can("canManageSuppliers")) },
     { icon:"users",        label:"Användare",      route:"users",      show:(isAdmin||can("canManageUsers")) },
     { icon:"rotate",       label:"Backup",         route:"backup",     show:(isAdmin||can("canBackup")) },
@@ -618,6 +619,7 @@ export default function App() {
           {current.name === "scan"         && <ScanPage         {...sharedProps} {...current.props} />}
           {current.name === "receipt"      && <ReceiptPage      {...sharedProps} {...current.props} />}
           {current.name === "qrlabels"     && <QrLabelsPage     {...sharedProps} {...current.props} />}
+          {current.name === "locationview"  && <LocationViewPage {...sharedProps} {...current.props} />}
           {current.name === "import"       && <ImportPage       {...sharedProps} />}
           {current.name === "variants"     && <VariantsPage     {...sharedProps} {...current.props} />}
           {current.name === "reports"      && <ReportsPage      {...sharedProps} />}
@@ -1058,24 +1060,91 @@ function ScanPage({ items, push, pop, toast$ }) {
   );
 }
 
+// ─── Location View Page ────────────────────────────────────────────────────────
+function LocationViewPage({ items, pop, push, can, isAdmin }) {
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  const locations = [...new Set(
+    items.map(i => [i.locationType, i.location].filter(Boolean).join(" — ")).filter(Boolean)
+  )].sort();
+
+  const filtered = locations.filter(l => !search || l.toLowerCase().includes(search.toLowerCase()));
+  const getItems = (loc) => items.filter(i => [i.locationType, i.location].filter(Boolean).join(" — ") === loc);
+
+  return (
+    <Page>
+      <TopBar title="Platser" subtitle="Vad finns var" onBack={pop}/>
+      <div style={{padding:"14px 14px 40px"}}>
+        <div style={{position:"relative",marginBottom:14}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:MU,pointerEvents:"none"}}><Icon name="magnifying-glass"/></span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök plats, t.ex. Låda 3A…"
+            style={{width:"100%",padding:"10px 10px 10px 30px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:WH}}/>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(loc => {
+            const locItems = getItems(loc);
+            const isOpen = expanded === loc;
+            return (
+              <div key={loc} style={{background:WH,borderRadius:10,border:`1.5px solid ${isOpen?B:BD}`,overflow:"hidden"}}>
+                <div onClick={()=>setExpanded(isOpen?null:loc)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer"}}>
+                  <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:B}}>{loc}</div>
+                    <div style={{fontSize:11,color:MU}}>{locItems.length} delar</div>
+                  </div>
+                  <i className={`fa-solid fa-chevron-${isOpen?"up":"down"}`} style={{fontSize:12,color:MU}}/>
+                </div>
+                {isOpen&&(
+                  <div style={{borderTop:`1px solid ${BD}`}}>
+                    {locItems.map(item=>(
+                      <div key={item.id} onClick={()=>push("detail",{item})}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:`1px solid ${BD}`,cursor:"pointer",background:WH}}>
+                        <span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:800,flexShrink:0}}>#{item.stockNumber}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
+                          {item.oem&&<div style={{fontSize:10,color:MU,fontFamily:"monospace"}}>{item.oem}</div>}
+                        </div>
+                        <div style={{flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:item.quantity===0?R:GR}}>{item.quantity}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {filtered.length===0&&<div style={{textAlign:"center",color:MU,padding:40}}>Inga platser hittades</div>}
+        </div>
+      </div>
+    </Page>
+  );
+}
+
 // ─── QR Labels Page — generera & visa QR-koder för utskrift ───────────────────
-function QrLabelsPage({ items, pop }) {
-  const [selected, setSelected] = useState(new Set());
+function QrLabelsPage({ items, pop, preSelected }) {
+  const [selected, setSelected] = useState(new Set(preSelected||[]));
   const [labelType, setLabelType] = useState("qr_full");
+  const [search, setSearch] = useState("");
 
   const toggle = (id) => setSelected(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
-  const selectAll = () => setSelected(new Set(items.map(i=>i.id)));
+  const selectAll = () => setSelected(new Set(filtered.map(i=>i.id)));
   const clearAll = () => setSelected(new Set());
+
+  const filtered = items.filter(i => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return [i.name, i.oem, i.stockNumber, i.make, i.location].some(f=>f?.toLowerCase().includes(q));
+  });
 
   const qrUrl = (text) => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
   const barcodeUrl = (text) => `https://barcodeapi.org/api/128/${encodeURIComponent(text)}`;
 
   const LABEL_TYPES = [
-    { k:"qr_full",    l:"QR — Fullständig",     desc:"QR-kod + namn + lagernr + artikelnr" },
-    { k:"qr_mini",    l:"QR — Mini",             desc:"Liten QR-kod + lagernr" },
-    { k:"barcode",    l:"Streckkod",             desc:"EAN/Code128 streckkod + lagernr + artikelnr" },
-    { k:"price_tag",  l:"Prislapp",              desc:"Pris + namn + lagernr" },
-    { k:"full_card",  l:"Kort — Komplett",       desc:"All info på ett kort" },
+    { k:"qr_full",   l:"QR — Fullständig",  desc:"QR-kod + namn + lagernr + artikelnr" },
+    { k:"qr_mini",   l:"QR — Mini",          desc:"Liten QR + lagernr" },
+    { k:"barcode",   l:"Streckkod",          desc:"Code128 + lagernr + artikelnr" },
+    { k:"price_tag", l:"Prislapp",           desc:"Pris + namn + lagernr" },
+    { k:"full_card", l:"Komplett kort",      desc:"All info + QR" },
   ];
 
   const printSelected = () => {
@@ -1083,78 +1152,29 @@ function QrLabelsPage({ items, pop }) {
     if (toPrint.length===0) return;
 
     let labelHtml = "";
-
-    if (labelType === "qr_full") {
-      labelHtml = toPrint.map(i=>`
-        <div class="label">
-          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:90px;height:90px"/>
-          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
-          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
-          <div class="art">Art: ${i.oem||"—"}</div>
-        </div>`).join("");
-    } else if (labelType === "qr_mini") {
-      labelHtml = toPrint.map(i=>`
-        <div class="label" style="padding:8px">
-          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:60px;height:60px"/>
-          <div style="font-weight:800;font-size:14px;color:#1B3A6B">#${i.stockNumber||"—"}</div>
-          <div style="font-size:9px;color:#666">${i.name}</div>
-        </div>`).join("");
-    } else if (labelType === "barcode") {
-      labelHtml = toPrint.map(i=>`
-        <div class="label">
-          <img src="${barcodeUrl(i.oem||i.stockNumber)}" style="width:100%;height:50px;object-fit:contain"/>
-          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
-          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
-          <div class="art">Art: ${i.oem||"—"}</div>
-        </div>`).join("");
-    } else if (labelType === "price_tag") {
-      labelHtml = toPrint.map(i=>`
-        <div class="label">
-          <div style="font-size:28px;font-weight:900;color:#1B3A6B;line-height:1">${(i.price||0).toLocaleString("sv-SE")} kr</div>
-          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
-          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
-          <div class="art">Art: ${i.oem||"—"}</div>
-          ${i.make?`<div style="font-size:10px;color:#888">${i.make}${i.model?" "+i.model:""}</div>`:""}
-        </div>`).join("");
-    } else if (labelType === "full_card") {
-      labelHtml = toPrint.map(i=>`
-        <div class="label" style="text-align:left;display:flex;gap:10px;align-items:flex-start">
-          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:70px;height:70px;flex-shrink:0"/>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:13px;margin-bottom:4px">${i.name}${i.side?" — "+i.side:""}</div>
-            <div style="font-size:22px;font-weight:900;color:#1B3A6B;line-height:1;margin-bottom:4px">${(i.price||0).toLocaleString("sv-SE")} kr</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-              <span class="badge">#${i.stockNumber||"—"}</span>
-              ${i.condition?`<span style="font-size:9px;background:#e8f5e9;color:#1B6B3A;border-radius:3px;padding:1px 5px;font-weight:600">${i.condition}</span>`:""}
-            </div>
-            <div style="font-size:9px;color:#666">Art: ${i.oem||"—"}</div>
-            ${i.make?`<div style="font-size:9px;color:#666">${i.make}${i.model?" "+i.model:""}</div>`:""}
-            ${i.location?`<div style="font-size:9px;color:#666">Plats: ${[i.locationType,i.location].filter(Boolean).join(" ")}</div>`:""}
-          </div>
-        </div>`).join("");
+    if (labelType==="qr_full") {
+      labelHtml = toPrint.map(i=>`<div class="label"><img src="${qrUrl(i.oem||i.stockNumber)}" style="width:90px;height:90px"/><div class="name">${i.name}${i.side?" — "+i.side:""}</div><div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div><div class="art">${i.oem||"—"}</div></div>`).join("");
+    } else if (labelType==="qr_mini") {
+      labelHtml = toPrint.map(i=>`<div class="label" style="padding:6px"><img src="${qrUrl(i.oem||i.stockNumber)}" style="width:55px;height:55px"/><div style="font-weight:800;font-size:13px;color:#1B3A6B">#${i.stockNumber||"—"}</div><div style="font-size:9px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.name}</div></div>`).join("");
+    } else if (labelType==="barcode") {
+      labelHtml = toPrint.map(i=>`<div class="label"><img src="${barcodeUrl(i.oem||i.stockNumber)}" style="width:100%;height:45px;object-fit:contain"/><div class="name">${i.name}${i.side?" — "+i.side:""}</div><div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div><div class="art">${i.oem||"—"}</div></div>`).join("");
+    } else if (labelType==="price_tag") {
+      labelHtml = toPrint.map(i=>`<div class="label"><div style="font-size:26px;font-weight:900;color:#1B3A6B;line-height:1">${(i.price||0).toLocaleString("sv-SE")} kr</div><div class="name">${i.name}${i.side?" — "+i.side:""}</div><div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div><div class="art">${i.oem||"—"}</div>${i.make?`<div style="font-size:9px;color:#888">${i.make}${i.model?" "+i.model:""}</div>`:""}</div>`).join("");
+    } else {
+      labelHtml = toPrint.map(i=>`<div class="label" style="text-align:left;display:flex;gap:8px;align-items:flex-start"><img src="${qrUrl(i.oem||i.stockNumber)}" style="width:65px;height:65px;flex-shrink:0"/><div style="flex:1;min-width:0"><div style="font-weight:800;font-size:12px;margin-bottom:3px">${i.name}${i.side?" — "+i.side:""}</div><div style="font-size:20px;font-weight:900;color:#1B3A6B;line-height:1;margin-bottom:3px">${(i.price||0).toLocaleString("sv-SE")} kr</div><div><span class="badge">#${i.stockNumber||"—"}</span></div><div style="font-size:9px;color:#666;margin-top:2px">Art: ${i.oem||"—"}</div>${i.make?`<div style="font-size:9px;color:#666">${i.make}${i.model?" "+i.model:""}</div>`:""}</div></div>`).join("");
     }
 
-    const cols = labelType==="qr_mini" ? 4 : labelType==="full_card" ? 1 : 3;
+    const cols = labelType==="qr_mini"?4:labelType==="full_card"?1:3;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiketter</title>
-      <style>
-        @page{margin:10mm}
-        body{font-family:sans-serif;margin:0;padding:0}
-        .grid{display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;padding:8px}
-        .label{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center;break-inside:avoid;background:#fff}
-        .name{font-weight:700;font-size:11px;margin:5px 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .art{font-size:9px;color:#888;font-family:monospace;margin-top:2px}
-        .badge{background:#1B3A6B;color:#fff;border-radius:3px;padding:2px 6px;font-size:11px;font-weight:800}
-        .row-info{margin:4px 0}
-      </style></head><body>
-      <div class="grid">${labelHtml}</div>
-      <script>window.onload=()=>setTimeout(()=>window.print(),500)</script>
-      </body></html>`;
+    <style>@page{margin:8mm}body{font-family:sans-serif;margin:0;padding:0}.grid{display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:6px}.label{border:1px solid #ddd;border-radius:5px;padding:8px;text-align:center;break-inside:avoid;background:#fff}.name{font-weight:700;font-size:10px;margin:4px 0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.art{font-size:8px;color:#888;font-family:monospace;margin-top:1px}.badge{background:#1B3A6B;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:800}.row-info{margin:3px 0}</style>
+    </head><body><div class="grid">${labelHtml}</div>
+    <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script></body></html>`;
 
     const blob = new Blob([html], {type:"text/html"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.target = "_blank"; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    const blobUrl = URL.createObjectURL(blob);
+    const w = window.open(blobUrl, "_blank");
+    if (!w) { const a=document.createElement("a"); a.href=blobUrl; a.download="etiketter.html"; a.click(); }
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
   };
 
   return (
@@ -1163,15 +1183,15 @@ function QrLabelsPage({ items, pop }) {
         right={<Btn small onClick={printSelected} disabled={selected.size===0}><Icon name="print"/> Skriv ut</Btn>}/>
       <div style={{padding:"14px 14px 80px"}}>
 
-        {/* Etiketttyp */}
+        {/* Etikettyp */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:12,marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Etiketttyp</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {LABEL_TYPES.map(t=>(
               <button key={t.k} onClick={()=>setLabelType(t.k)}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
-                <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B:WH,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {labelType===t.k&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B:WH,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {labelType===t.k&&<div style={{width:7,height:7,borderRadius:"50%",background:WH}}/>}
                 </div>
                 <div>
                   <div style={{fontWeight:700,fontSize:13,color:labelType===t.k?B:TX}}>{t.l}</div>
@@ -1182,23 +1202,33 @@ function QrLabelsPage({ items, pop }) {
           </div>
         </div>
 
-        {/* Välj artiklar */}
+        {/* Sök */}
+        <div style={{position:"relative",marginBottom:10}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:MU,pointerEvents:"none"}}><Icon name="magnifying-glass"/></span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, lagernr, artikelnr, märke…"
+            style={{width:"100%",padding:"9px 9px 9px 30px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box"}}/>
+        </div>
+
+        {/* Välj */}
         <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
           <Btn variant="ghost" small onClick={selectAll}>Markera alla</Btn>
           <Btn variant="ghost" small onClick={clearAll}>Avmarkera</Btn>
           <span style={{marginLeft:"auto",fontSize:12,color:MU}}>{selected.size} av {items.length} valda</span>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {items.map(item=>(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {filtered.map(item=>(
             <div key={item.id} onClick={()=>toggle(item.id)}
-              style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:10,cursor:"pointer",display:"flex",gap:8,alignItems:"center"}}>
-              <div style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`2px solid ${selected.has(item.id)?B:BD}`,background:selected.has(item.id)?B:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {selected.has(item.id)&&<Icon name="check" style={{fontSize:10,color:WH}}/>}
+              style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:"10px 12px",cursor:"pointer",display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`2px solid ${selected.has(item.id)?B:BD}`,background:selected.has(item.id)?B:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {selected.has(item.id)&&<Icon name="check" style={{fontSize:9,color:WH}}/>}
               </div>
-              <div style={{minWidth:0,flex:1}}>
-                <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</div>
-                <div style={{fontSize:10,color:MU,fontFamily:"monospace"}}>#{item.stockNumber} · {item.oem||"—"}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
+                <div style={{fontSize:11,color:MU,fontFamily:"monospace"}}>
+                  <span style={{background:B,color:WH,borderRadius:3,padding:"0 4px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>
+                  {item.oem||"—"}
+                </div>
               </div>
             </div>
           ))}
@@ -1207,6 +1237,7 @@ function QrLabelsPage({ items, pop }) {
     </Page>
   );
 }
+
 
 // ─── Receipt Page — PDF-liknande kvitto ───────────────────────────────────────
 function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings, pop }) {
@@ -2261,7 +2292,8 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:6}}>
           {[
             {icon:"qrcode",    label:"Skanna",      route:"scan",        show:isAdmin||can("canScan")},
-            {icon:"qrcode",    label:"QR-etiketter", route:"qrlabels",   show:isAdmin},
+            {icon:"qrcode",    label:"Etiketter", route:"qrlabels",   show:isAdmin},
+            {icon:"location-dot",label:"Platser",    route:"locationview", show:(isAdmin||can("canView"))},
             {icon:"file-export",label:"Importera",  route:"import",      show:isAdmin||can("canAdd")},
             {icon:"chart-line",label:"Rapporter",   route:"reports",     show:isAdmin||can("canViewReports")},
             {icon:"chart-line",label:"Säljlogg",    route:"saleslog",    show:isAdmin||can("canViewLog")},
@@ -2524,7 +2556,8 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               {icon:"list",          label:"Säljlogg",       route:"saleslog",    show:isAdmin||can("canViewLog")},
               {icon:"file-export",   label:"Importera",      route:"import",      show:isAdmin||can("canAdd")},
               {icon:"pen",           label:"Massredigera",   route:"bulkedit",    show:isAdmin},
-              {icon:"qrcode",        label:"QR-etiketter",   route:"qrlabels",    show:isAdmin},
+              {icon:"qrcode",        label:"Etiketter",       route:"qrlabels",    show:isAdmin},
+              {icon:"location-dot",   label:"Platser",         route:"locationview", show:(isAdmin||can("canView"))},
               {icon:"truck",         label:"Leverantörer",   route:"suppliers",   show:isAdmin},
               {icon:"users",         label:"Användare",      route:"users",       show:isAdmin},
               {icon:"rotate",        label:"Backup",         route:"backup",      show:isAdmin},
@@ -3016,45 +3049,71 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
   };
 
   const printProduct = () => {
-    const imgs = item.images?.length>0 ? `<img src="${item.images[0]}" style="width:200px;height:150px;object-fit:cover;border-radius:8px;margin-bottom:12px"/>` : "";
+    const imgHtml = item.images?.length>0 ? `<img src="${item.images[0]}" style="width:200px;height:150px;object-fit:cover;border-radius:8px;margin-bottom:12px"/>` : "";
+    const loc = [item.locationType, item.location].filter(Boolean).join(" — ");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${item.name}</title>
-    <style>body{font-family:sans-serif;margin:0;padding:24px;color:#141820}h1{font-size:20px;margin:0 0 4px}h2{font-size:12px;color:#8A90A0;font-weight:400;margin:0 0 16px}.badge{display:inline-block;background:#1B3A6B18;color:#1B3A6B;border:1px solid #1B3A6B28;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin-right:4px}.num{background:#1B3A6B;color:#fff;padding:6px 14px;border-radius:6px;font-size:22px;font-weight:800;letter-spacing:1px;display:inline-block;margin-bottom:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-top:12px}.row{font-size:12px;padding:5px 0;border-bottom:1px solid #f0f0f0}.lbl{color:#8A90A0;font-size:10px;text-transform:uppercase;letter-spacing:.5px}.val{font-weight:600;font-size:13px}.price{font-size:28px;font-weight:800;color:#1B3A6B;margin:12px 0}</style>
-    </head><body>
-    ${imgs}
+    <style>body{font-family:sans-serif;margin:0;padding:24px;color:#141820}
+    .num{background:#1B3A6B;color:#fff;padding:6px 14px;border-radius:6px;font-size:22px;font-weight:800;letter-spacing:1px;display:inline-block;margin-bottom:12px}
+    h1{font-size:18px;margin:0 0 4px}
+    .badge{display:inline-block;background:#1B3A6B18;color:#1B3A6B;border:1px solid #1B3A6B28;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;margin:2px}
+    .price{font-size:28px;font-weight:800;color:#1B3A6B;margin:12px 0}
+    .row{font-size:12px;padding:5px 0;border-bottom:1px solid #f0f0f0}
+    .lbl{color:#8A90A0;font-size:10px;text-transform:uppercase}
+    .val{font-weight:600;font-size:13px}
+    </style></head><body>
+    ${imgHtml}
     ${item.stockNumber?`<div class="num">#${item.stockNumber}</div><br/>`:""}
     <h1>${item.name}${item.side?` — ${item.side}`:""}</h1>
-    <h2>${item.oem?`OEM: ${item.oem}`:""}</h2>
-    <span class="badge">${item.category||""}</span><span class="badge">${item.condition||""}</span>
-    <div class="price">${(item.price||0).toLocaleString("sv-SE")} kr</div>
-    <div class="grid">
-      ${item.make?`<div class="row"><div class="lbl">Märke</div><div class="val">${item.make} ${item.model||""}</div></div>`:""}
-      ${item.location?`<div class="row"><div class="lbl">Hyllplats</div><div class="val">${item.location}</div></div>`:""}
-      ${item.regNumber?`<div class="row"><div class="lbl">Reg.nr</div><div class="val">${item.regNumber}</div></div>`:""}
+    <div style="margin:6px 0">
+      <span class="badge">${item.category||""}</span>
+      <span class="badge">${item.condition||""}</span>
     </div>
+    <div class="price">${(item.price||0).toLocaleString("sv-SE")} kr</div>
+    <div class="row"><div class="lbl">Artikelnummer</div><div class="val" style="font-family:monospace">${item.oem||"—"}</div></div>
+    ${item.make?`<div class="row"><div class="lbl">Märke</div><div class="val">${item.make} ${item.model||""}</div></div>`:""}
+    ${loc?`<div class="row"><div class="lbl">Placering</div><div class="val">${loc}</div></div>`:""}
+    ${item.regNumber?`<div class="row"><div class="lbl">Reg.nr</div><div class="val">${item.regNumber}</div></div>`:""}
     ${item.notes?`<div style="margin-top:14px;background:#f5f5f7;border-radius:6px;padding:10px;font-size:12px">${item.notes}</div>`:""}
+    <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script>
     </body></html>`;
-    // Skapa en blob och öppna i ny flik — fungerar i både webbläsare och Electron
+    // Använd Blob URL — fungerar i Electron och webbläsare
     const blob = new Blob([html], {type:"text/html"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    const blobUrl = URL.createObjectURL(blob);
+    // Electron: öppna i nytt fönster via shell
+    if (window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(blobUrl);
+    } else {
+      const w = window.open(blobUrl, "_blank");
+      if (!w) {
+        // Popup blockerad — ladda ner filen istället
+        const a = document.createElement("a");
+        a.href = blobUrl; a.download = `${item.name}.html`; a.click();
+      }
+    }
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
   };
 
   const shareLink = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("item", item.id);
-    const link = url.toString();
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: item.name, text: `${item.name} — #${item.stockNumber||""}`, url: link });
+    const baseUrl = window.location.origin;
+    const link = `${baseUrl}/?item=${item.id}`;
+    const subject = encodeURIComponent(`${item.name} — #${item.stockNumber||""}`);
+    const body = encodeURIComponent(`${item.name}\nArtikelnr: ${item.oem||"—"}\nPris: ${(item.price||0).toLocaleString("sv-SE")} kr\n\n${link}`);
+
+    // Mobil — Web Share API (AirDrop, WhatsApp, osv)
+    if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
+      try {
+        await navigator.share({ title: item.name, text: `${item.name} — ${item.oem||""}`, url: link });
         return;
-      }
-    } catch { /* användaren avbröt delningen — gå vidare till clipboard som fallback */ }
-    copyText(link).then(()=>toast$("Länk kopierad!","success")).catch(()=>toast$("Kunde inte kopiera","error"));
+      } catch {}
+    }
+
+    // Desktop — öppna dela-meny
+    setShowShare(true);
+    setShareData({ link, subject, body });
   };
+
+  const [showShare, setShowShare] = useState(false);
+  const [shareData, setShareData] = useState(null);
 
   const right = (
     <div style={{display:"flex",gap:6}}>
@@ -3069,6 +3128,27 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
     <Page>
       <TopBar title={item.name+(item.side?` — ${item.side}`:"")} onBack={pop} right={right} />
       <div style={{padding:"14px 14px 40px"}}>
+
+      {/* Dela-panel */}
+      {showShare&&shareData&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:300,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowShare(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:"16px 16px 0 0",width:"100%",padding:"20px 16px",paddingBottom:"max(20px,env(safe-area-inset-bottom))"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:16,textAlign:"center"}}>Dela artikel</div>
+            {[
+              {icon:"envelope",label:"Outlook / E-post",action:()=>{ window.open(`mailto:?subject=${shareData.subject}&body=${shareData.body}`); setShowShare(false); }},
+              {icon:"brands fa-microsoft",label:"Teams",action:()=>{ window.open(`https://teams.microsoft.com/l/chat/0/0?message=${shareData.body}`); setShowShare(false); }},
+              {icon:"brands fa-discord",label:"Discord",action:()=>{ copyText(shareData.link).then(()=>toast$("Länk kopierad — klistra in i Discord","success")); setShowShare(false); }},
+              {icon:"copy",label:"Kopiera länk",action:()=>{ copyText(shareData.link).then(()=>toast$("Länk kopierad!","success")); setShowShare(false); }},
+            ].map(({icon,label,action})=>(
+              <button key={label} onClick={action} style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"13px 12px",background:"none",border:"none",borderBottom:`1px solid ${BD}`,cursor:"pointer",fontSize:14,fontWeight:500,color:TX}}>
+                <i className={`fa-${icon.startsWith("brands")?icon:`solid fa-${icon}`}`} style={{fontSize:18,color:B,width:24,textAlign:"center"}}/>
+                {label}
+              </button>
+            ))}
+            <button onClick={()=>setShowShare(false)} style={{width:"100%",padding:"13px",marginTop:8,background:BG,border:"none",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:600,color:MU}}>Avbryt</button>
+          </div>
+        </div>
+      )}
 
         {/* Gallery */}
         {imgs.length>0 ? (
@@ -3099,10 +3179,16 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
               <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Lagernummer</div>
               <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:800,color:WH,letterSpacing:2,lineHeight:1}}>#{item.stockNumber}</div>
             </div>
-            <button onClick={()=>copyText(item.stockNumber).then(()=>toast$("Lagernummer kopierat","success"))}
-              style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-              <i className="fa-solid fa-copy"/> Kopiera
-            </button>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>copyText(item.stockNumber).then(()=>toast$("Lagernummer kopierat","success"))}
+                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                <i className="fa-solid fa-copy"/> Kopiera
+              </button>
+              <button onClick={()=>push("qrlabels",{preSelected:[item.id]})}
+                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                <i className="fa-solid fa-tag"/> Etikett
+              </button>
+            </div>
           </div>
         )}
 
