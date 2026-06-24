@@ -2538,7 +2538,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
       {/* Slide-up menu overlay */}
       {menuOpen && (
         <div style={{position:"fixed",inset:0,zIndex:200}} onClick={()=>setMenuOpen(false)}>
-          <div style={{position:"absolute",bottom:0,left:0,right:0,background:WH,borderRadius:"20px 20px 0 0",padding:"8px 0 max(24px,env(safe-area-inset-bottom)) 0",boxShadow:"0 -4px 30px rgba(0,0,0,.15)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{position:"absolute",bottom:0,left:0,right:0,background:WH,borderRadius:"20px 20px 0 0",paddingTop:"max(12px,calc(env(safe-area-inset-top) + 12px))",paddingBottom:"max(24px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 30px rgba(0,0,0,.15)",maxHeight:"calc(90vh - env(safe-area-inset-top))",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             {/* Handle */}
             <div style={{width:36,height:4,background:BD,borderRadius:2,margin:"0 auto 16px"}}/>
             {/* User info */}
@@ -3099,20 +3099,22 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
   const shareLink = async () => {
     const baseUrl = window.location.origin;
     const link = `${baseUrl}/?item=${item.id}`;
-    const subject = encodeURIComponent(`${item.name} — #${item.stockNumber||""}`);
-    const body = encodeURIComponent(`${item.name}\nArtikelnr: ${item.oem||"—"}\nPris: ${(item.price||0).toLocaleString("sv-SE")} kr\n\n${link}`);
+    const text = `${item.name} — #${item.stockNumber||""}\nArtikelnr: ${item.oem||"—"}\nPris: ${(item.price||0).toLocaleString("sv-SE")} kr`;
 
-    // Mobil — Web Share API (AirDrop, WhatsApp, osv)
-    if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
+    // Web Share API — mobilens egna dela-meny (AirDrop, WhatsApp, Messages osv)
+    if (navigator.share) {
       try {
-        await navigator.share({ title: item.name, text: `${item.name} — ${item.oem||""}`, url: link });
+        await navigator.share({ title: item.name, text, url: link });
         return;
-      } catch {}
+      } catch (e) {
+        // Användaren avbröt — gör inget
+        if (e.name === "AbortError") return;
+      }
     }
 
-    // Desktop — öppna dela-meny
+    // Desktop utan Web Share — visa egen panel
+    setShareData({ link, subject: encodeURIComponent(`${item.name} — #${item.stockNumber||""}`), body: encodeURIComponent(text + "\n\n" + link) });
     setShowShare(true);
-    setShareData({ link, subject, body });
   };
 
   const [showShare, setShowShare] = useState(false);
