@@ -176,16 +176,12 @@ html,body{height:100%;background:${BG};}
 @media (max-width:768px){
   input,select,textarea{font-size:16px!important;}
 }
-/* Safe area BARA i PWA standalone-läge — standard metod */
-@supports (padding-top: env(safe-area-inset-top)){
-  @media (display-mode: standalone){
-    html{ padding-top: env(safe-area-inset-top); }
-  }
-}
 /* Landscape på mobil */
 @media (max-width:768px) and (orientation:landscape){
   .page{padding-bottom:env(safe-area-inset-bottom)!important;}
 }
+/* PWA safe area — sätts via JS nedan */
+.pwa-mode .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
@@ -288,7 +284,7 @@ function Page({ children, style:sx, noAnim, maxWidth }) {
 // ─── Top bar ──────────────────────────────────────────────────────────────────
 function TopBar({ title, onBack, right, subtitle }) {
   return (
-    <div style={{position:"sticky",top:0,zIndex:10,background:WH,borderBottom:`1px solid ${BD}`,boxShadow:SH,flexShrink:0}}><div style={{maxWidth:900,margin:"0 auto",display:"flex",alignItems:"center",minHeight:52,padding:"0 14px",gap:10}}>
+    <div className="topbar-safe" style={{position:"sticky",top:0,zIndex:10,background:WH,borderBottom:`1px solid ${BD}`,boxShadow:SH,flexShrink:0}}><div style={{maxWidth:900,margin:"0 auto",display:"flex",alignItems:"center",minHeight:52,padding:"0 14px",gap:10}}>
       {onBack ? (
         <button onClick={onBack} style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34,color:B,flexShrink:0,cursor:"pointer"}}>
           <svg viewBox="0 0 320 512" style={{width:12,height:12,fill:"currentColor"}}><path d="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l192 192c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 246.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-192 192z"/></svg>
@@ -433,6 +429,13 @@ export default function App() {
   const tRef = useRef();
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  // Detektera PWA standalone-läge och lägg till klass på html
+  useEffect(() => {
+    const isPWA = window.matchMedia("(display-mode: standalone)").matches
+      || window.navigator.standalone === true;
+    if (isPWA) document.documentElement.classList.add("pwa-mode");
+  }, []);
 
   // PWA install prompt
   useEffect(() => {
