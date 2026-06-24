@@ -5,8 +5,18 @@ const path    = require("path");
 const os      = require("os");
 const fs      = require("fs");
 
-const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// ── mDNS — registrera lager.local på nätverket ────────────────────────────────
+try {
+  const bonjour = require("bonjour-service");
+  const b = new bonjour.Bonjour();
+  b.publish({ name: "Lager", type: "http", port: Number(PORT) });
+} catch {
+  // bonjour-service inte installerat — ignorera
+}
+
+const app  = express();
 const DB_PATH = path.join(__dirname, "lager.db");
 
 // ── Databas ───────────────────────────────────────────────────────────────────
@@ -166,7 +176,8 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log("         Lager - Server igang");
   console.log("========================================");
   console.log(`  Lokalt:   http://localhost:${PORT}`);
-  ips.forEach(ip => console.log(`  Natverk:  http://${ip}:${PORT}`));
+  console.log(`  Natverk:  http://lager.local:${PORT}`);
+  ips.forEach(ip => console.log(`  IP:       http://${ip}:${PORT}`));
   console.log(`  Admin:    http://localhost:${PORT}/admin`);
   console.log("========================================\n");
 });

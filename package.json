@@ -1,6 +1,6 @@
 {
   "name": "lager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lagerhantering for karossdelar",
   "main": "electron-main.js",
   "engines": {
@@ -66,7 +66,8 @@
     "express": "^5.0.0",
     "sqlite3": "^5.1.7",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "bonjour-service": "^1.2.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",

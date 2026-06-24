@@ -20,7 +20,6 @@ function probeLagerServer(host, port) {
       res.on("end", () => {
         try {
           const json = JSON.parse(data);
-          // Bekräfta att det faktiskt är vår server (har ips-fältet)
           if (json && Array.isArray(json.ips)) resolve(true);
           else resolve(false);
         } catch { resolve(false); }
@@ -68,22 +67,25 @@ async function scanNetwork(port) {
 async function findServer() {
   console.log("[discovery] Kollar localhost...");
 
-  // 1. Finns det redan en lokal server?
   const localOk = await probeLagerServer("127.0.0.1", PORT);
   if (localOk) {
     console.log("[discovery] Lokal server hittad.");
     return `http://127.0.0.1:${PORT}`;
   }
 
-  // 2. Scanna nätverket (t.ex. Raspberry Pi)
-  console.log("[discovery] Ingen lokal server — scannar nätverket...");
+  console.log("[discovery] Provar lager.local...");
+  const mdnsOk = await probeLagerServer("lager.local", PORT);
+  if (mdnsOk) {
+    console.log("[discovery] Hittad via lager.local");
+    return `http://lager.local:${PORT}`;
+  }
+
+  console.log("[discovery] Scannar nätverket...");
   const remoteHost = await scanNetwork(PORT);
   if (remoteHost) {
     return `http://${remoteHost}:${PORT}`;
   }
 
-  // 3. Ingen server hittad — visa tydligt felmeddelande
-  console.log("[discovery] Ingen server hittades.");
   return null;
 }
 
