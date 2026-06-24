@@ -172,15 +172,15 @@ const CSS = `
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:${BG};}
-body{
-  padding-top:env(safe-area-inset-top);
-  padding-left:env(safe-area-inset-left);
-  padding-right:env(safe-area-inset-right);
-  padding-bottom:env(safe-area-inset-bottom);
-}
 /* Blockera zoom på inputs för mobil */
 @media (max-width:768px){
   input,select,textarea{font-size:16px!important;}
+}
+/* Safe area BARA i PWA standalone-läge — standard metod */
+@supports (padding-top: env(safe-area-inset-top)){
+  @media (display-mode: standalone){
+    html{ padding-top: env(safe-area-inset-top); }
+  }
 }
 /* Landscape på mobil */
 @media (max-width:768px) and (orientation:landscape){
@@ -2387,7 +2387,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
 }
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
-const sc = q => q===0?R:q<=2?R:q<=3?AM:GR;
+const sc = q => q===0?R:GR;
 const cc = c => c==="Ny"?GR:c?.includes("Gott")?B:c?.includes("spricka")?AM:MU;
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
@@ -3150,8 +3150,8 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
         </div>
       )}
 
-        {/* Gallery */}
-        {imgs.length>0 ? (
+        {/* Gallery — visas bara om bilder finns */}
+        {imgs.length>0 && (
           <div style={{marginBottom:16}}>
             <div style={{borderRadius:12,overflow:"hidden",background:BG,aspectRatio:"4/3",position:"relative",userSelect:"none"}}
               onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -3168,8 +3168,6 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
               </div>
             )}
           </div>
-        ) : (
-          <div style={{height:120,borderRadius:12,background:WH,border:`1px dashed ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",color:MU,fontSize:13,marginBottom:16}}>Inga bilder uppladdade</div>
         )}
 
         {/* Lagernummer — stor badge med kopieringsknapp */}
