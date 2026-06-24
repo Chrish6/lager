@@ -74,8 +74,94 @@ const ALL_PERMISSIONS = [
 const CATEGORIES = ["Skärmar","Motorhuvar","Stötfångare","Dörrar","Spoilers","Sidokjolar","Bakluckor","Speglar","Rutor","Huvar","Övrigt"];
 const CONDITIONS = ["Ny","Begagnad - Gott skick","Begagnad - Liten spricka","Begagnad - Kräver lackering","Reservdelar / Skrotning"];
 const SIDES = ["","Vänster","Höger","Liksidig","Fram","Bak","Fram Vänster","Fram Höger","Bak Vänster","Bak Höger"];
+const LOCATION_TYPES = ["","Hylla","Låda","Hisshylla","Rum","Kontainer","Utomhus","Övrigt"];
+
+// ── Bilmärkesgrupper ─────────────────────────────────────────────────────────
+const BRAND_GROUPS = {
+  "VW Group":       ["Volkswagen","VW","Audi","Skoda","Seat","Porsche","Lamborghini","Bentley","Cupra","MAN"],
+  "Stellantis":     ["Peugeot","Citroën","Citroen","Opel","Vauxhall","Fiat","Alfa Romeo","Alfa-Romeo","Jeep","DS","Lancia","Chrysler","Dodge","Ram"],
+  "Renault Group":  ["Renault","Dacia","Nissan","Mitsubishi"],
+  "BMW Group":      ["BMW","Mini","Rolls-Royce"],
+  "Mercedes Group": ["Mercedes","Mercedes-Benz","Smart","Maybach"],
+  "Ford Group":     ["Ford","Lincoln"],
+  "GM Group":       ["Chevrolet","Cadillac","Buick","GMC"],
+  "Toyota Group":   ["Toyota","Lexus","Daihatsu","Hino"],
+  "Honda Group":    ["Honda","Acura"],
+  "Hyundai Group":  ["Hyundai","Kia","Genesis"],
+  "Geely Group":    ["Volvo","Geely","Polestar","Lynk & Co"],
+  "Tata Group":     ["Jaguar","Land Rover","Tata"],
+  "Mazda":          ["Mazda"],
+  "Subaru":         ["Subaru"],
+  "Suzuki":         ["Suzuki"],
+  "Tesla":          ["Tesla"],
+};
+
+// Normaliserar märkesnamn — "audi", "AUDI" → "Audi"
+// Byggs från BRAND_GROUPS så det är alltid synkat
+const MAKE_NORMALIZE = {};
+Object.values(BRAND_GROUPS).flat().forEach(brand => {
+  MAKE_NORMALIZE[brand.toLowerCase()] = brand;
+});
+// Extra stavningsvarianter
+const MAKE_ALIASES = {
+  "vw": "Volkswagen", "mercedes": "Mercedes-Benz", "merc": "Mercedes-Benz",
+  "marcedes": "Mercedes-Benz", "merscedes": "Mercedes-Benz",
+  "bmw": "BMW", "volov": "Volvo", "volvo": "Volvo",
+  "citroen": "Citroën", "alfa romeo": "Alfa Romeo", "alfa-romeo": "Alfa Romeo",
+  "land rover": "Land Rover", "landrover": "Land Rover",
+  "rolls royce": "Rolls-Royce", "rollsroyce": "Rolls-Royce",
+  "mini": "Mini", "seat": "Seat", "skoda": "Skoda",
+  "peugeot": "Peugeot", "renault": "Renault", "dacia": "Dacia",
+  "hyundai": "Hyundai", "hondai": "Hyundai", "kia": "Kia",
+  "toyota": "Toyota", "honda": "Honda", "mazda": "Mazda",
+  "ford": "Ford", "opel": "Opel", "fiat": "Fiat",
+  "subaru": "Subaru", "suzuki": "Suzuki", "tesla": "Tesla",
+  "nissan": "Nissan", "mitsubishi": "Mitsubishi",
+};
+
+function normalizeMake(make) {
+  if (!make) return make;
+  const m = make.trim().toLowerCase();
+  if (MAKE_ALIASES[m]) return MAKE_ALIASES[m];
+  if (MAKE_NORMALIZE[m]) return MAKE_NORMALIZE[m];
+  // Kapitalisera första bokstaven om inget hittas
+  return make.trim().charAt(0).toUpperCase() + make.trim().slice(1).toLowerCase();
+}
+
+function getBrandGroup(make) {
+  if (!make) return null;
+  const normalized = normalizeMake(make);
+  const m = normalized.toLowerCase();
+  for (const [group, brands] of Object.entries(BRAND_GROUPS)) {
+    if (brands.some(b => b.toLowerCase() === m)) return group;
+  }
+  return null;
+}
 
 function genId(p="id") { return `${p}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
+
+// ── Universell kopiera-funktion — fungerar i Electron, webbläsare och HTTP ────
+function copyText(text) {
+  // Försök modern API först
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => {
+      legacyCopy(text);
+    });
+  }
+  legacyCopy(text);
+  return Promise.resolve();
+}
+function legacyCopy(text) {
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+  document.body.appendChild(el);
+  el.focus(); el.select();
+  try { document.execCommand("copy"); } catch {}
+  document.body.removeChild(el);
+}
+
+
 
 const R="#CC1B2B", B="#1B3A6B", BG="#F4F5F7", WH="#FFFFFF", BD="#E2E5EA";
 const TX="#141820", TM="#3D4451", MU="#8A90A0", GR="#16A34A", AM="#D97706";
@@ -295,7 +381,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
           {netInfo.ips.map(ip=>(
             <div key={ip} onClick={()=>{
               const url = `http://${ip}:${netInfo.port}`;
-              navigator.clipboard?.writeText(url).then(()=>toast$("Kopierad!","success")).catch(()=>{});
+              copyText(url).then(()=>toast$("Kopierad!","success"));
             }}
               style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",borderRadius:5,cursor:"pointer",marginBottom:2,background:WH,border:`1px solid ${BD}`}}
               title="Klicka för att kopiera">
@@ -330,9 +416,30 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const tRef = useRef();
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  // PWA install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const installApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setShowInstallBanner(false);
+    setInstallPrompt(null);
+  };
 
   const [viewMode, setViewMode] = useState("cards");
-  const [filters, setFilters] = useState({ cats:[], conds:[], sides:[], make:"", model:"", yearMin:"", yearMax:"", priceMin:"", priceMax:"", low:false, supplier:"" });
+  const [filters, setFilters] = useState({ cats:[], conds:[], sides:[], make:"", brandGroup:"", locationType:"", model:"", yearMin:"", yearMax:"", priceMin:"", priceMax:"", low:false, supplier:"" });
   const applyFilters = useCallback(f => setFilters(f), []);
   // page stack: each entry = { name, props }
   const [stack, setStack] = useState([{ name:"inventory" }]);
@@ -450,6 +557,25 @@ export default function App() {
       {toast && (
         <div className="fade" style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:toast.type==="error"?R:toast.type==="success"?GR:B,color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:999,fontSize:13,fontWeight:500,boxShadow:SH2,whiteSpace:"nowrap",pointerEvents:"none"}}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:B,color:WH,padding:"12px 16px",zIndex:998,display:"flex",alignItems:"center",gap:12,boxShadow:"0 -4px 20px rgba(0,0,0,.2)"}}>
+          <div style={{width:36,height:36,background:R,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>
+            <i className="fa-solid fa-box-open"/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:13}}>Installera Lager</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>Lägg till på hemskärmen</div>
+          </div>
+          <button onClick={installApp} style={{background:WH,color:B,border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>
+            Installera
+          </button>
+          <button onClick={()=>setShowInstallBanner(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",fontSize:18,cursor:"pointer",padding:"4px",flexShrink:0}}>
+            ✕
+          </button>
         </div>
       )}
 
@@ -785,20 +911,17 @@ function ScanPage({ items, push, pop, toast$ }) {
   const [lastResult, setLastResult] = useState(null);
   const [cameraError, setCameraError] = useState(null);
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const scanLoopRef = useRef(null);
-  const jsQRRef = useRef(null);
+  const readerRef = useRef(null);
 
   useEffect(() => {
     return () => { stopCamera(); };
   }, []);
 
-  const loadJsQR = () => new Promise((resolve, reject) => {
-    if (window.jsQR) { resolve(window.jsQR); return; }
+  const loadZXing = () => new Promise((resolve, reject) => {
+    if (window.ZXing) { resolve(window.ZXing); return; }
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js";
-    s.onload = () => resolve(window.jsQR);
+    s.src = "https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js";
+    s.onload = () => resolve(window.ZXing);
     s.onerror = reject;
     document.head.appendChild(s);
   });
@@ -807,23 +930,21 @@ function ScanPage({ items, push, pop, toast$ }) {
     setCameraError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError("Webbläsaren saknar kamerastöd. Kräver HTTPS eller localhost.");
-      toast$("Kamera stöds inte i denna webbläsare","error");
       return;
     }
     try {
-      jsQRRef.current = await loadJsQR();
-    } catch {
-      // Fortsätt ändå — manuell sökning fungerar utan jsQR
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:"environment"} });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      const ZXing = await loadZXing();
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      const reader = new ZXing.BrowserMultiFormatReader(hints);
+      readerRef.current = reader;
       setScanning(true);
-      if (jsQRRef.current) scanLoop();
+      await reader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+        if (result) {
+          lookup(result.getText());
+          stopCamera();
+        }
+      });
     } catch (err) {
       let msg = "Kunde inte starta kameran.";
       if (err?.name === "NotAllowedError") msg = "Kameraåtkomst nekades. Tillåt kameran i webbläsarens inställningar.";
@@ -831,47 +952,26 @@ function ScanPage({ items, push, pop, toast$ }) {
       else if (err?.name === "NotReadableError") msg = "Kameran används redan av en annan app.";
       else if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") msg = "Kameran kräver HTTPS. Fungerar bara på localhost eller säkra anslutningar.";
       setCameraError(msg);
+      setScanning(false);
       toast$(msg,"error");
     }
   };
 
-  const scanLoop = () => {
-    const tick = () => {
-      if (!streamRef.current || !videoRef.current || !canvasRef.current) return;
-      const video = videoRef.current;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQRRef.current?.(imageData.data, imageData.width, imageData.height);
-        if (code?.data) {
-          lookup(code.data);
-          stopCamera();
-          return;
-        }
-      }
-      scanLoopRef.current = requestAnimationFrame(tick);
-    };
-    scanLoopRef.current = requestAnimationFrame(tick);
-  };
-
   const stopCamera = () => {
-    if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
-    if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
-    streamRef.current = null;
+    if (readerRef.current) {
+      try { readerRef.current.reset(); } catch {}
+      readerRef.current = null;
+    }
     setScanning(false);
   };
 
   const lookup = (code) => {
-    const matches = items.filter(i => i.oem===code || i.stockNumber===code || i.sku===code || i.id===code);
+    const c = code.trim();
+    const matches = items.filter(i => i.oem===c || i.stockNumber===c || i.sku===c || i.id===c);
     if (matches.length === 0) {
       setLastResult(null);
-      toast$("Ingen artikel matchade koden","error");
+      toast$(`Ingen artikel matchade: ${c}`,"error");
     } else if (matches.length > 1) {
-      // Multiple exemplar with same artikelnummer — go to variants page
       toast$(`Hittade ${matches.length} exemplar`,"success");
       push("variants", {sku: matches[0].sku});
     } else {
@@ -888,21 +988,23 @@ function ScanPage({ items, push, pop, toast$ }) {
 
   return (
     <Page>
-      <TopBar title="Skanna" subtitle="Sök via QR-kod" onBack={()=>{stopCamera();pop();}}/>
+      <TopBar title="Skanna" subtitle="QR-kod eller streckkod" onBack={()=>{stopCamera();pop();}}/>
       <div style={{padding:"14px 14px 60px"}}>
 
         <div style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,overflow:"hidden",marginBottom:14}}>
           {scanning?(
             <div style={{position:"relative",aspectRatio:"4/3",background:"#000"}}>
               <video ref={videoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              <canvas ref={canvasRef} style={{display:"none"}}/>
-              <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"60%",height:"40%",border:`3px solid ${B}`,borderRadius:8,boxShadow:"0 0 0 9999px rgba(0,0,0,.3)"}}/>
-              <div style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",color:"#fff",fontSize:12,fontWeight:600}}>Rikta mot QR-koden</div>
+              <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"70%",height:"35%",border:`3px solid ${B}`,borderRadius:8,boxShadow:"0 0 0 9999px rgba(0,0,0,.3)"}}/>
+              <div style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",color:"#fff",fontSize:12,fontWeight:600}}>Rikta mot QR-kod eller streckkod</div>
             </div>
           ):(
             <div style={{padding:40,textAlign:"center"}}>
-              <Icon name="qrcode" style={{fontSize:48,color:BD,marginBottom:14,display:"block",margin:"0 auto 14px"}}/>
-              <div style={{fontSize:13,color:MU,marginBottom:16}}>Starta kameran för att skanna en artikels QR-kod</div>
+              <div style={{display:"flex",gap:16,justifyContent:"center",marginBottom:14}}>
+                <Icon name="qrcode" style={{fontSize:40,color:BD}}/>
+                <Icon name="barcode" style={{fontSize:40,color:BD}}/>
+              </div>
+              <div style={{fontSize:13,color:MU,marginBottom:16}}>Starta kameran för att skanna QR-kod eller streckkod (EAN, UPC, Code128 m.fl.)</div>
               <Btn onClick={startCamera}><Icon name="camera"/> Starta kamera</Btn>
               {cameraError&&(
                 <div style={{marginTop:14,background:R+"10",border:`1px solid ${R}30`,borderRadius:8,padding:"10px 12px",fontSize:12,color:R,textAlign:"left"}}>
@@ -945,40 +1047,145 @@ function ScanPage({ items, push, pop, toast$ }) {
 // ─── QR Labels Page — generera & visa QR-koder för utskrift ───────────────────
 function QrLabelsPage({ items, pop }) {
   const [selected, setSelected] = useState(new Set());
+  const [labelType, setLabelType] = useState("qr_full");
 
   const toggle = (id) => setSelected(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const selectAll = () => setSelected(new Set(items.map(i=>i.id)));
   const clearAll = () => setSelected(new Set());
 
-  const qrUrl = (text) => `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(text)}`;
+  const qrUrl = (text) => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
+  const barcodeUrl = (text) => `https://barcodeapi.org/api/128/${encodeURIComponent(text)}`;
+
+  const LABEL_TYPES = [
+    { k:"qr_full",    l:"QR — Fullständig",     desc:"QR-kod + namn + lagernr + artikelnr" },
+    { k:"qr_mini",    l:"QR — Mini",             desc:"Liten QR-kod + lagernr" },
+    { k:"barcode",    l:"Streckkod",             desc:"EAN/Code128 streckkod + lagernr + artikelnr" },
+    { k:"price_tag",  l:"Prislapp",              desc:"Pris + namn + lagernr" },
+    { k:"full_card",  l:"Kort — Komplett",       desc:"All info på ett kort" },
+  ];
 
   const printSelected = () => {
     const toPrint = items.filter(i=>selected.has(i.id));
-    if (toPrint.length===0) { return; }
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR-etiketter</title>
-      <style>body{font-family:sans-serif;margin:0;padding:20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.label{border:1px solid #ddd;border-radius:8px;padding:12px;text-align:center;break-inside:avoid}.label img{width:110px;height:110px}.label .name{font-weight:700;font-size:12px;margin-top:6px}.label .sku{font-size:11px;color:#666;font-family:monospace}</style>
-      </head><body><div class="grid">${toPrint.map(i=>`<div class="label"><img src="${qrUrl(i.sku)}"/><div class="name">${i.name}</div><div class="sku">${i.sku}</div></div>`).join("")}</div>
-      <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    if (toPrint.length===0) return;
+
+    let labelHtml = "";
+
+    if (labelType === "qr_full") {
+      labelHtml = toPrint.map(i=>`
+        <div class="label">
+          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:90px;height:90px"/>
+          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
+          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
+          <div class="art">Art: ${i.oem||"—"}</div>
+        </div>`).join("");
+    } else if (labelType === "qr_mini") {
+      labelHtml = toPrint.map(i=>`
+        <div class="label" style="padding:8px">
+          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:60px;height:60px"/>
+          <div style="font-weight:800;font-size:14px;color:#1B3A6B">#${i.stockNumber||"—"}</div>
+          <div style="font-size:9px;color:#666">${i.name}</div>
+        </div>`).join("");
+    } else if (labelType === "barcode") {
+      labelHtml = toPrint.map(i=>`
+        <div class="label">
+          <img src="${barcodeUrl(i.oem||i.stockNumber)}" style="width:100%;height:50px;object-fit:contain"/>
+          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
+          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
+          <div class="art">Art: ${i.oem||"—"}</div>
+        </div>`).join("");
+    } else if (labelType === "price_tag") {
+      labelHtml = toPrint.map(i=>`
+        <div class="label">
+          <div style="font-size:28px;font-weight:900;color:#1B3A6B;line-height:1">${(i.price||0).toLocaleString("sv-SE")} kr</div>
+          <div class="name">${i.name}${i.side?" — "+i.side:""}</div>
+          <div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div>
+          <div class="art">Art: ${i.oem||"—"}</div>
+          ${i.make?`<div style="font-size:10px;color:#888">${i.make}${i.model?" "+i.model:""}</div>`:""}
+        </div>`).join("");
+    } else if (labelType === "full_card") {
+      labelHtml = toPrint.map(i=>`
+        <div class="label" style="text-align:left;display:flex;gap:10px;align-items:flex-start">
+          <img src="${qrUrl(i.oem||i.stockNumber)}" style="width:70px;height:70px;flex-shrink:0"/>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:13px;margin-bottom:4px">${i.name}${i.side?" — "+i.side:""}</div>
+            <div style="font-size:22px;font-weight:900;color:#1B3A6B;line-height:1;margin-bottom:4px">${(i.price||0).toLocaleString("sv-SE")} kr</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+              <span class="badge">#${i.stockNumber||"—"}</span>
+              ${i.condition?`<span style="font-size:9px;background:#e8f5e9;color:#1B6B3A;border-radius:3px;padding:1px 5px;font-weight:600">${i.condition}</span>`:""}
+            </div>
+            <div style="font-size:9px;color:#666">Art: ${i.oem||"—"}</div>
+            ${i.make?`<div style="font-size:9px;color:#666">${i.make}${i.model?" "+i.model:""}</div>`:""}
+            ${i.location?`<div style="font-size:9px;color:#666">Plats: ${[i.locationType,i.location].filter(Boolean).join(" ")}</div>`:""}
+          </div>
+        </div>`).join("");
+    }
+
+    const cols = labelType==="qr_mini" ? 4 : labelType==="full_card" ? 1 : 3;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiketter</title>
+      <style>
+        @page{margin:10mm}
+        body{font-family:sans-serif;margin:0;padding:0}
+        .grid{display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;padding:8px}
+        .label{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center;break-inside:avoid;background:#fff}
+        .name{font-weight:700;font-size:11px;margin:5px 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .art{font-size:9px;color:#888;font-family:monospace;margin-top:2px}
+        .badge{background:#1B3A6B;color:#fff;border-radius:3px;padding:2px 6px;font-size:11px;font-weight:800}
+        .row-info{margin:4px 0}
+      </style></head><body>
+      <div class="grid">${labelHtml}</div>
+      <script>window.onload=()=>setTimeout(()=>window.print(),500)</script>
+      </body></html>`;
+
+    const blob = new Blob([html], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.target = "_blank"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
   };
 
   return (
     <Page>
-      <TopBar title="QR-etiketter" onBack={pop} subtitle="Skriv ut etiketter" right={<Btn small onClick={printSelected}><Icon name="receipt"/> Skriv ut</Btn>}/>
-      <div style={{padding:"14px 14px 60px"}}>
-        <div style={{display:"flex",gap:8,marginBottom:14}}>
-          <Btn variant="ghost" small onClick={selectAll}>Markera alla</Btn>
-          <Btn variant="ghost" small onClick={clearAll}>Avmarkera</Btn>
-          <span style={{marginLeft:"auto",fontSize:12,color:MU,alignSelf:"center"}}>{selected.size} valda</span>
+      <TopBar title="Etiketter" onBack={pop} subtitle={`${selected.size} valda`}
+        right={<Btn small onClick={printSelected} disabled={selected.size===0}><Icon name="print"/> Skriv ut</Btn>}/>
+      <div style={{padding:"14px 14px 80px"}}>
+
+        {/* Etiketttyp */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:12,marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Etiketttyp</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {LABEL_TYPES.map(t=>(
+              <button key={t.k} onClick={()=>setLabelType(t.k)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B:WH,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {labelType===t.k&&<div style={{width:8,height:8,borderRadius:"50%",background:WH}}/>}
+                </div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:labelType===t.k?B:TX}}>{t.l}</div>
+                  <div style={{fontSize:11,color:MU}}>{t.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {/* Välj artiklar */}
+        <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+          <Btn variant="ghost" small onClick={selectAll}>Markera alla</Btn>
+          <Btn variant="ghost" small onClick={clearAll}>Avmarkera</Btn>
+          <span style={{marginLeft:"auto",fontSize:12,color:MU}}>{selected.size} av {items.length} valda</span>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           {items.map(item=>(
-            <div key={item.id} onClick={()=>toggle(item.id)} style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:12,cursor:"pointer",textAlign:"center"}}>
-              <img src={qrUrl(item.oem||item.stockNumber||item.sku)} alt="" style={{width:90,height:90,margin:"0 auto 8px"}}/>
-              <div style={{fontWeight:700,fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-              <div style={{fontSize:11,color:MU,fontFamily:"monospace"}}>{item.oem||item.stockNumber||item.sku}</div>
+            <div key={item.id} onClick={()=>toggle(item.id)}
+              style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:10,cursor:"pointer",display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`2px solid ${selected.has(item.id)?B:BD}`,background:selected.has(item.id)?B:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {selected.has(item.id)&&<Icon name="check" style={{fontSize:10,color:WH}}/>}
+              </div>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</div>
+                <div style={{fontSize:10,color:MU,fontFamily:"monospace"}}>#{item.stockNumber} · {item.oem||"—"}</div>
+              </div>
             </div>
           ))}
         </div>
@@ -1044,8 +1251,11 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
       <div style="text-align:center;font-size:11px;color:#bbb;border-top:2px dashed #ccc;padding-top:14px;margin-top:14px">Tack för ditt köp!</div>
       <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
       </body></html>`;
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+    const blob = new Blob([html], {type:"text/html"});
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl; a.target = "_blank"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 5000);
   };
 
   const totalDisc = rows.reduce((a,r)=>a+(r.discountKr||0)*r.qty,0);
@@ -1232,6 +1442,9 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
             }
           }
         });
+
+        // Normalisera märket automatiskt
+        if (item.make) item.make = normalizeMake(item.make);
 
         // Validering — Namn, Artikelnummer och Lagerplats är obligatoriska
         if (!item.name?.trim()) errs.push(`Rad ${idx+2}: Namn saknas`);
@@ -1722,7 +1935,7 @@ function BulkEditPage({ items, saveItems, pop, toast$, can, isAdmin }) {
     {k:"category", l:"Kategori", opts:CATEGORIES},
     {k:"condition", l:"Skick", opts:CONDITIONS},
     {k:"supplier", l:"Leverantör", opts:null},
-    {k:"location", l:"Hylla/plats", opts:null},
+    {k:"location", l:"Placering", opts:null},
   ];
   const currentField = FIELDS.find(f=>f.k===field);
 
@@ -2180,23 +2393,26 @@ function LoginPage({ users, saveUsers, setSession, push, pop, toast$ }) {
 // ─── Inventory Page ───────────────────────────────────────────────────────────
 function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, cart, addToCart }) {
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("name");
+  const [sortBy, setSortBy] = useState("stockNumber");
   const [sortDir, setSortDir] = useState("asc");
   const [showSort, setShowSort] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const setFilters = applyFilters;
 
   if (!can("canView")) return <Page><TopBar title="Lager" /><div style={{padding:40,textAlign:"center",color:R,fontWeight:600}}>Åtkomst nekad.</div></Page>;
 
-  const activeCount = [filters.cats.length,filters.conds.length,filters.sides.length,filters.make,filters.model,filters.yearMin,filters.yearMax,filters.priceMin,filters.priceMax,filters.low,filters.supplier].filter(Boolean).length;
+  const activeCount = [filters.cats.length,filters.conds.length,filters.sides.length,filters.make,filters.brandGroup,filters.locationType,filters.model,filters.yearMin,filters.yearMax,filters.priceMin,filters.priceMax,filters.low,filters.supplier].filter(Boolean).length;
 
   let filtered = items.filter(i => {
     const q = search.toLowerCase();
-    const m = !q || [i.name,i.sku,i.category,i.oem,i.compatible,i.side,i.supplier,i.location,i.make,i.model,i.regNumber,i.stockNumber].some(f=>f?.toLowerCase().includes(q));
+    const m = !q || [i.name,i.sku,i.category,i.oem,i.compatible,i.side,i.supplier,i.location,i.make,i.model,i.regNumber,i.stockNumber,getBrandGroup(i.make)].some(f=>f?.toLowerCase().includes(q));
     if (!m) return false;
     if (filters.cats.length && !filters.cats.includes(i.category)) return false;
     if (filters.conds.length && !filters.conds.includes(i.condition)) return false;
     if (filters.sides.length && !filters.sides.includes(i.side)) return false;
     if (filters.make && !i.make?.toLowerCase().includes(filters.make.toLowerCase())) return false;
+    if (filters.brandGroup && getBrandGroup(i.make) !== filters.brandGroup) return false;
+    if (filters.locationType && i.locationType !== filters.locationType) return false;
     if (filters.model && !i.model?.toLowerCase().includes(filters.model.toLowerCase())) return false;
     if (filters.yearMin && Number(i.yearFrom)<Number(filters.yearMin)) return false;
     if (filters.yearMax && Number(i.yearTo||i.yearFrom)>Number(filters.yearMax)) return false;
@@ -2208,9 +2424,10 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
   });
   // Smartare sortering: numeriska fält jämförs som tal, tomma värden hamnar alltid sist,
   // textfält jämförs naturligt (case-insensitive, å/ä/ö-medvetet via localeCompare).
-  const NUMERIC_SORT_KEYS = new Set(["price","quantity","updatedAt","costPrice"]);
+  const NUMERIC_SORT_KEYS = new Set(["price","quantity","updatedAt","costPrice","stockNumber"]);
   filtered = [...filtered].sort((a,b) => {
-    let va = a[sortBy], vb = b[sortBy];
+    let va = sortBy === "brandGroup" ? getBrandGroup(a.make) : a[sortBy];
+    let vb = sortBy === "brandGroup" ? getBrandGroup(b.make) : b[sortBy];
     const aEmpty = va===undefined||va===null||va==="";
     const bEmpty = vb===undefined||vb===null||vb==="";
     if (aEmpty && bEmpty) return 0;
@@ -2234,7 +2451,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
   const confirmDelAction = async () => { await saveItems(items.filter(i=>i.id!==confirmDel)); toast$("Borttagen","success"); setConfirmDel(null); };
 
   const exportCSV = () => {
-    const hdr=["Artikelnummer","Namn","Sida","Kategori","OEM","Märke","Modell","Årsmodell","Reg.nr","Skick","Antal","Pris","Inköpspris","Leverantör","Hyllplats"];
+    const hdr=["Artikelnummer","Namn","Sida","Kategori","OEM","Märke","Modell","Årsmodell","Reg.nr","Skick","Antal","Pris","Inköpspris","Leverantör","Placering"];
     const rows=filtered.map(i=>[i.sku,i.name,i.side,i.category,i.oem,i.make,i.model,`${i.yearFrom||""}-${i.yearTo||""}`,i.regNumber,i.condition,i.quantity,i.price,i.costPrice,i.supplier,i.location]);
     const csv=[hdr,...rows].map(r=>r.map(c=>`"${c??""}`).join(",")).join("\n");
     const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="lager_export.csv"; a.click();
@@ -2327,61 +2544,68 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           </div>
         )}
 
-        {/* Search + toolbar */}
-        <div style={{display:"flex",gap:8,marginBottom:8}}>
-          <div style={{position:"relative",flex:1}}>
+        {/* Search + toolbar — rad 1: sök, rad 2: verktyg */}
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+          {/* Rad 1 — sökfält */}
+          <div style={{position:"relative"}}>
             <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:MU,pointerEvents:"none"}}><Icon name="magnifying-glass"/></span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, SKU, OEM, lagernr, reg.nr…"
-              style={{width:"100%",padding:"10px 10px 10px 32px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,color:TX,background:WH,boxShadow:SH}} />
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, OEM, lagernr…"
+              style={{width:"100%",padding:"10px 10px 10px 32px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,color:TX,background:WH,boxShadow:SH,boxSizing:"border-box"}} />
           </div>
-          {/* Scan */}
-          {(can("canScan")||isAdmin)&&(
-            <button onClick={()=>push("scan")} style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,color:TM,boxShadow:SH}}>
-              <Icon name="qrcode"/>
+          {/* Rad 2 — verktyg */}
+          <div style={{display:"flex",gap:6}}>
+            {/* Scan */}
+            {(can("canScan")||isAdmin)&&(
+              <button onClick={()=>push("scan")} style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,color:TM,boxShadow:SH}}>
+                <Icon name="qrcode"/>
+              </button>
+            )}
+            {/* Filter */}
+            <button onClick={()=>push("filter",{filters,setFilters:applyFilters,items})}
+              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${activeCount>0?B:BD}`,background:activeCount>0?B:WH,color:activeCount>0?WH:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
+              <Icon name="sliders"/>
+              {activeCount>0&&<span style={{fontSize:11,fontWeight:700,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"1px 6px"}}>{activeCount}</span>}
             </button>
-          )}
-          {/* Filter */}
-          <button onClick={()=>push("filter",{filters,setFilters:applyFilters,items})}
-            style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${activeCount>0?B:BD}`,background:activeCount>0?B:WH,color:activeCount>0?WH:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
-            <Icon name="sliders"/>
-            {activeCount>0&&<span style={{fontSize:11,fontWeight:700,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"1px 6px"}}>{activeCount}</span>}
-          </button>
-          {/* Sort */}
-          <button onClick={()=>setShowSort(s=>!s)}
-            style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${sortBy!=="name"?B:BD}`,background:sortBy!=="name"?B+"10":WH,color:sortBy!=="name"?B:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
-            {sortDir==="asc"?<Icon name="arrow-up"/>:<Icon name="arrow-down"/>}
-          </button>
-          {/* View mode */}
-          <div style={{display:"flex",gap:5}}>
-            <button onClick={()=>setViewMode("cards")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="cards"?B:BD}`,background:viewMode==="cards"?B+"10":WH,color:viewMode==="cards"?B:MU,boxShadow:SH}}>
-              <Icon name="table-cells-large"/>
+            {/* Sort */}
+            <button onClick={()=>setShowSort(s=>!s)}
+              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${sortBy!=="stockNumber"?B:BD}`,background:sortBy!=="stockNumber"?B+"10":WH,color:sortBy!=="stockNumber"?B:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
+              {sortDir==="asc"?<Icon name="arrow-up-short-wide"/>:<Icon name="arrow-down-wide-short"/>}
             </button>
-            <button onClick={()=>setViewMode("list")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="list"?B:BD}`,background:viewMode==="list"?B+"10":WH,color:viewMode==="list"?B:MU,boxShadow:SH}}>
-              <Icon name="list"/>
-            </button>
+            {/* View mode */}
+            <div style={{display:"flex",gap:5}}>
+              <button onClick={()=>setViewMode("cards")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="cards"?B:BD}`,background:viewMode==="cards"?B+"10":WH,color:viewMode==="cards"?B:MU,boxShadow:SH}}>
+                <Icon name="table-cells-large"/>
+              </button>
+              <button onClick={()=>setViewMode("list")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="list"?B:BD}`,background:viewMode==="list"?B+"10":WH,color:viewMode==="list"?B:MU,boxShadow:SH}}>
+                <Icon name="list"/>
+              </button>
+            </div>
+            {can("canAdd") && <button onClick={()=>push("edit",{item:null})} style={{marginLeft:"auto",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"9px 13px",borderRadius:8,border:"none",background:B,color:WH,fontSize:16,boxShadow:SH}}><Icon name="plus"/></button>}
           </div>
-          {can("canAdd") && <button onClick={()=>push("edit",{item:null})} style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"10px 13px",borderRadius:8,border:"none",background:B,color:WH,fontSize:16,boxShadow:SH}}><Icon name="plus"/></button>}
         </div>
 
         {/* Sort sheet */}
         {showSort && (
           <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:8,overflow:"hidden"}}>
             {[
-              {k:"name",l:"Namn"},
-              {k:"quantity",l:"Antal i lager"},
-              {k:"price",l:"Pris"},
-              {k:"category",l:"Kategori"},
-              {k:"make",l:"Märke"},
-              {k:"condition",l:"Skick"},
-              {k:"updatedAt",l:"Senast uppdaterad"},
-            ].map(({k,l})=>(
-              <button key={k} onClick={()=>{ if(sortBy===k){setSortDir(d=>d==="asc"?"desc":"asc");}else{setSortBy(k);setSortDir(k==="updatedAt"?"desc":"asc");} setShowSort(false); }}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:sortBy===k?B+"08":WH,border:"none",borderBottom:`1px solid ${BD}`,color:sortBy===k?B:TX,fontWeight:sortBy===k?700:500,fontSize:13,cursor:"pointer",textAlign:"left"}}>
-                {sortBy===k?(sortDir==="asc"?<Icon name="arrow-up" style={{width:14}}/>:<Icon name="arrow-down" style={{width:14}}/>):<Icon name="minus" style={{width:14}}/>}
-                {l}
-                {sortBy===k&&<Icon name="check" style={{marginLeft:"auto",color:B,fontSize:11}}/>}
-              </button>
-            ))}
+              {k:"stockNumber", dir:"asc",  l:"Lagernummer stigande", sub:"", icon:"arrow-up-1-9"},
+              {k:"stockNumber", dir:"desc", l:"Lagernummer fallande",  sub:"", icon:"arrow-down-9-1"},
+              {k:"price",       dir:"asc",  l:"Pris stigande",         sub:"", icon:"arrow-up-1-9"},
+              {k:"price",       dir:"desc", l:"Pris fallande",         sub:"", icon:"arrow-down-9-1"},
+            ].map(({k,dir,l,sub,icon})=>{
+              const active = sortBy===k && sortDir===dir;
+              return (
+                <button key={k+dir} onClick={()=>{ setSortBy(k); setSortDir(dir); setShowSort(false); }}
+                  style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:active?B:WH,border:"none",borderBottom:`1px solid ${BD}`,color:active?WH:TX,cursor:"pointer",textAlign:"left"}}>
+                  <Icon name={icon} style={{fontSize:16,flexShrink:0,color:active?WH:B}}/>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13}}>{l}</div>
+                    <div style={{fontSize:11,color:active?"rgba(255,255,255,.7)":MU}}>{sub}</div>
+                  </div>
+                  {active&&<Icon name="check" style={{marginLeft:"auto",fontSize:14}}/>}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -2390,12 +2614,31 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
             {filters.cats.map(c=><span key={c} style={{background:B+"15",color:B,border:`1px solid ${B}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
             {filters.conds.map(c=><span key={c} style={{background:AM+"15",color:AM,border:`1px solid ${AM}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
+            {filters.sides.map(c=><span key={c} style={{background:B+"15",color:B,border:`1px solid ${B}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
             {filters.make&&<span style={{background:MU+"15",color:MU,border:`1px solid ${MU}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{filters.make}</span>}
+            {filters.supplier&&<span style={{background:MU+"15",color:MU,border:`1px solid ${MU}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{filters.supplier}</span>}
             {(filters.priceMin||filters.priceMax)&&<span style={{background:GR+"15",color:GR,border:`1px solid ${GR}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>kr {filters.priceMin||"0"}-{filters.priceMax||"∞"}</span>}
             {filters.low&&<span style={{background:R+"15",color:R,border:`1px solid ${R}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>Låglager</span>}
-            <button onClick={()=>setFilters({cats:[],conds:[],sides:[],make:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""})} style={{background:"none",border:"none",color:MU,fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"3px 4px"}}>Rensa</button>
+            <button onClick={()=>setFilters({cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""})} style={{background:"none",border:"none",color:MU,fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"3px 4px"}}>Rensa alla</button>
           </div>
         )}
+
+        {/* Snabbfilter märken */}
+        {(() => {
+          const makes = [...new Set(items.map(i=>i.make).filter(Boolean))].sort();
+          if (makes.length === 0) return null;
+          return (
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,overflowX:"auto",paddingBottom:2}}>
+              <span style={{fontSize:11,color:MU,alignSelf:"center",flexShrink:0}}>Märke:</span>
+              {makes.map(m=>(
+                <button key={m} onClick={()=>setFilters({...filters,make:filters.make===m?"":m})}
+                  style={{flexShrink:0,background:filters.make===m?B:WH,color:filters.make===m?WH:TM,border:`1.5px solid ${filters.make===m?B:BD}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
 
         <div style={{fontSize:12,color:MU,marginBottom:10,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span>Visar <strong style={{color:TX}}>{filtered.length}</strong> av {items.length} delar</span>
@@ -2447,7 +2690,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${BD}`}}>
-                  {[["","",44],["name","Namn"],["oem","Art.nr",90],["category","Kat.",90],["condition","Skick",120],["quantity","Ant.",55],["price","Pris",85],["location","Hylla",65],["","",100]].map(([col,lab,w],i)=>(
+                  {[["","",44],["name","Namn"],["oem","Art.nr",90],["category","Kat.",90],["condition","Skick",120],["quantity","Ant.",55],["price","Pris",85],["location","Placering",65],["","",100]].map(([col,lab,w],i)=>(
                     <th key={i} onClick={()=>col&&(sortBy===col?setSortDir(d=>d==="asc"?"desc":"asc"):(setSortBy(col),setSortDir("asc")))}
                       style={{textAlign:"left",padding:"8px 10px",fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,cursor:col?"pointer":"default",whiteSpace:"nowrap",width:w||"auto"}}>
                       {lab}{col&&sortBy===col?(sortDir==="asc"?" ^":" ↓"):""}
@@ -2522,36 +2765,50 @@ function GroupCard({ group, can, onOpen }) {
   const totalQty = group.reduce((a,i)=>a+i.quantity,0);
   const prices = group.map(i=>i.price).filter(Boolean);
   const minP = Math.min(...prices); const maxP = Math.max(...prices);
+  const brandGroup = getBrandGroup(best.make);
+  const location = [best.locationType, best.location].filter(Boolean).join(" ");
 
   return (
     <div onClick={onOpen} style={{background:WH,borderRadius:10,border:`1.5px solid ${B}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10}}>
+      <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
         {/* Image */}
-        <div style={{flexShrink:0,width:56,height:56,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>
+        <div style={{flexShrink:0,width:52,height:52,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
           {best.images?.[0]?<img src={best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
         </div>
         {/* Info */}
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-            {/* All stock numbers */}
+          {/* Lagernummer — liten, diskret */}
+          <div style={{display:"flex",gap:4,marginBottom:3,flexWrap:"wrap"}}>
             {group.map(item=>(
-              <span key={item.id} style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,letterSpacing:.5,flexShrink:0}}>#{item.stockNumber||"?"}</span>
+              <span key={item.id} style={{background:BG,color:MU,border:`1px solid ${BD}`,borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
             ))}
           </div>
+          {/* Namn */}
           <div style={{fontWeight:700,fontSize:14,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
-          <div style={{fontSize:11,color:MU,marginTop:2}}></div>
+          {/* Märke + koncern */}
+          {best.make&&<div style={{fontSize:10,color:MU,marginTop:1}}>
+            {best.make}{brandGroup?<span style={{color:B,marginLeft:4,fontWeight:600}}>({brandGroup})</span>:null}
+          </div>}
         </div>
-        {/* Qty */}
+        {/* Antal — grön/röd */}
         <div style={{flexShrink:0,textAlign:"right"}}>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:GR,lineHeight:1}}>{totalQty}</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR,lineHeight:1}}>{totalQty}</div>
           <div style={{fontSize:10,color:MU}}>st</div>
         </div>
       </div>
 
+      {/* Placering — stor och tydlig */}
+      {location&&(
+        <div style={{background:B+"08",borderRadius:6,padding:"5px 8px",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B,flexShrink:0}}/>
+          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
+        </div>
+      )}
+
       {/* Bottom: price + hint */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:10,borderTop:`1px solid ${BD}`,marginTop:"auto"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${BD}`,marginTop:"auto"}}>
         <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:B}}>
-          {minP===maxP?`${minP.toLocaleString("sv-SE")} kr`:`${minP.toLocaleString("sv-SE")}–${maxP.toLocaleString("sv-SE")} kr`}
+          {prices.length===0?"—":minP===maxP?`${minP.toLocaleString("sv-SE")} kr`:`${minP.toLocaleString("sv-SE")}–${maxP.toLocaleString("sv-SE")} kr`}
         </div>
         <div style={{fontSize:11,color:B,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
           {group.length} exemplar <i className="fa-solid fa-chevron-right" style={{fontSize:10}}/>
@@ -2628,7 +2885,7 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
                     </div>
                     <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1,marginBottom:3}}>{item.price.toLocaleString("sv-SE")} kr</div>
                     <div style={{fontSize:11,color:MU,display:"flex",gap:10,flexWrap:"wrap"}}>
-                      {item.location&&<span>Hylla: <strong style={{color:TX}}>{item.location}</strong></span>}
+                      {item.location&&<span>Placering: <strong style={{color:TX}}>{item.location}</strong></span>}
                       <span>Antal: <strong style={{color:item.quantity===0?R:GR}}>{item.quantity} st</strong></span>
                       {item.regNumber&&<span>Reg: <strong style={{color:B}}>{item.regNumber}</strong></span>}
                     </div>
@@ -2709,7 +2966,7 @@ function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, o
       <div style={{fontSize:11,color:MU,marginBottom:6,flex:1}}>
         <div><span></span>{item.oem&&<span style={{marginLeft:8}}>Art.nr: <strong style={{color:TM}}>{item.oem}</strong></span>}</div>
         {item.make&&<div style={{marginTop:2,color:TM}}>{item.make}{item.model?` ${item.model}`:""}{item.yearFrom?` (${item.yearFrom}${item.yearTo&&item.yearTo!==item.yearFrom?`–${item.yearTo}`:""})`:"" }</div>}
-        {item.location&&<div style={{marginTop:2}}>Hylla: <strong style={{color:TM}}>{item.location}</strong>{item.regNumber&&<span style={{marginLeft:8}}>Reg: <strong style={{color:B}}>{item.regNumber}</strong></span>}</div>}
+        {item.location&&<div style={{marginTop:2}}>Placering: <strong style={{color:TM}}>{item.location}</strong>{item.regNumber&&<span style={{marginLeft:8}}>Reg: <strong style={{color:B}}>{item.regNumber}</strong></span>}</div>}
       </div>
 
       {/* Price + buttons */}
@@ -2806,12 +3063,7 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
         return;
       }
     } catch { /* användaren avbröt delningen — gå vidare till clipboard som fallback */ }
-    try {
-      await navigator.clipboard.writeText(link);
-      toast$("Länk kopierad!","success");
-    } catch {
-      toast$("Kunde inte kopiera länken","error");
-    }
+    copyText(link).then(()=>toast$("Länk kopierad!","success")).catch(()=>toast$("Kunde inte kopiera","error"));
   };
 
   const right = (
@@ -2850,14 +3102,31 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
           <div style={{height:120,borderRadius:12,background:WH,border:`1px dashed ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",color:MU,fontSize:13,marginBottom:16}}>Inga bilder uppladdade</div>
         )}
 
-        {/* Lagernummer — stor badge */}
+        {/* Lagernummer — stor badge med kopieringsknapp */}
         {item.stockNumber&&(
           <div style={{background:B,borderRadius:10,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12}}>
             <div style={{flex:1}}>
               <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Lagernummer</div>
               <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:800,color:WH,letterSpacing:2,lineHeight:1}}>#{item.stockNumber}</div>
             </div>
-            <Icon name="tag" style={{fontSize:32,color:"rgba(255,255,255,.3)"}}/>
+            <button onClick={()=>copyText(item.stockNumber).then(()=>toast$("Lagernummer kopierat","success"))}
+              style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+              <i className="fa-solid fa-copy"/> Kopiera
+            </button>
+          </div>
+        )}
+
+        {/* Artikelnummer — kopieringsknapp */}
+        {item.oem&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Artikelnummer (OEM)</div>
+              <div style={{fontFamily:"monospace",fontSize:16,fontWeight:700,color:TX}}>{item.oem}</div>
+            </div>
+            <button onClick={()=>copyText(item.oem).then(()=>toast$("Artikelnummer kopierat","success"))}
+              style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,padding:"7px 12px",color:B,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+              <i className="fa-solid fa-copy"/> Kopiera
+            </button>
           </div>
         )}
 
@@ -2915,7 +3184,7 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
               {item.yearFrom&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Årsmodell</div><div style={{fontSize:14,fontWeight:600}}>{item.yearFrom}{item.yearTo?`-${item.yearTo}`:""}</div></div>}
               {item.regNumber&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Reg.nr</div><div style={{fontSize:15,fontWeight:800,letterSpacing:1.5,color:B}}>{item.regNumber}</div></div>}
             </div>
-            {bilInfoUrl&&<a href={bilInfoUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:B,color:"#fff",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:600,textDecoration:"none"}}><><Icon name="magnifying-glass" style={{marginRight:5}}/> Kolla bilinfo & originalpris</></a>}
+            {bilInfoUrl&&<button onClick={()=>{ try{ window.open(bilInfoUrl,"_blank"); }catch{ window.location.href=bilInfoUrl; } }} style={{display:"inline-flex",alignItems:"center",gap:5,background:B,color:"#fff",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer"}}><Icon name="magnifying-glass" style={{marginRight:5}}/> Kolla bilinfo & originalpris</button>}
           </div>
         )}
 
@@ -2934,7 +3203,7 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
             <Field label="Artikelnummer" value={item.oem} half />
             <Field label="Skick" value={item.condition} half />
             <Field label="Sida" value={item.side} half />
-            <Field label="Hyllplats" value={item.location} half />
+            <Field label="Placering" value={[item.locationType, item.location].filter(Boolean).join(" — ")} half />
           </div>
           {showMore&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:"12px 12px",marginTop:12,paddingTop:12,borderTop:`1px solid ${BD}`}}>
@@ -2963,75 +3232,142 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
 // ─── Filter Page ──────────────────────────────────────────────────────────────
 function FilterPage({ items, filters, setFilters, pop }) {
   const [f, setF] = useState({...filters});
-  const toggle = (arr, key, val) => setF(p=>({...p,[key]:p[key].includes(val)?p[key].filter(x=>x!==val):[...p[key],val]}));
+  const toggle = (key, val) => setF(p=>({...p,[key]:p[key].includes(val)?p[key].filter(x=>x!==val):[...p[key],val]}));
   const set = (key,val) => setF(p=>({...p,[key]:val}));
 
-  const allMakes = [...new Set(items.map(i=>i.make).filter(Boolean))].sort();
-  const allSuppliers = [...new Set(items.map(i=>i.supplier).filter(Boolean))].sort();
+  const allMakes     = ["", ...new Set(items.map(i=>i.make).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
+  const allGroups    = ["", ...new Set(items.map(i=>getBrandGroup(i.make)).filter(Boolean))].sort();
+  const allSuppliers = ["", ...new Set(items.map(i=>i.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
+  const allLocTypes  = ["", ...new Set(items.map(i=>i.locationType).filter(Boolean))].sort();
+  const allModels    = ["", ...new Set(items.map(i=>i.model).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sv"));
+
+  const prices = items.map(i=>i.price||0).filter(p=>p>0);
+  const globalMin = prices.length ? Math.floor(Math.min(...prices)/100)*100 : 0;
+  const globalMax = prices.length ? Math.ceil(Math.max(...prices)/100)*100 : 100000;
+
+  const pMin = f.priceMin !== "" ? Number(f.priceMin) : globalMin;
+  const pMax = f.priceMax !== "" ? Number(f.priceMax) : globalMax;
+
   const condColors = {"Ny":GR,"Begagnad - Gott skick":B,"Begagnad - Liten spricka":AM,"Begagnad - Kräver lackering":AM,"Reservdelar / Skrotning":R};
 
   const matchCount = items.filter(i => {
     if (f.cats.length&&!f.cats.includes(i.category)) return false;
     if (f.conds.length&&!f.conds.includes(i.condition)) return false;
     if (f.sides.length&&!f.sides.includes(i.side)) return false;
-    if (f.make&&!i.make?.toLowerCase().includes(f.make.toLowerCase())) return false;
-    if (f.model&&!i.model?.toLowerCase().includes(f.model.toLowerCase())) return false;
-    if (f.yearMin&&Number(i.yearFrom)<Number(f.yearMin)) return false;
-    if (f.yearMax&&Number(i.yearTo||i.yearFrom)>Number(f.yearMax)) return false;
-    if (f.priceMin&&i.price<Number(f.priceMin)) return false;
-    if (f.priceMax&&i.price>Number(f.priceMax)) return false;
+    if (f.make&&i.make!==f.make) return false;
+    if (f.brandGroup&&getBrandGroup(i.make)!==f.brandGroup) return false;
+    if (f.locationType&&i.locationType!==f.locationType) return false;
+    if (f.model&&i.model!==f.model) return false;
+    if (f.priceMin!==""&&i.price<Number(f.priceMin)) return false;
+    if (f.priceMax!==""&&i.price>Number(f.priceMax)) return false;
     if (f.low&&i.quantity>3) return false;
-    if (f.supplier&&!i.supplier?.toLowerCase().includes(f.supplier.toLowerCase())) return false;
+    if (f.supplier&&i.supplier!==f.supplier) return false;
     return true;
   }).length;
 
-  const Section = ({label})=><div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:1,margin:"18px 0 8px",paddingBottom:4,borderBottom:`1px solid ${BD}`}}>{label}</div>;
-  const Chip = ({label,active,color=B,onClick})=><button onClick={onClick} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${active?color:BD}`,background:active?color+"18":WH,color:active?color:TM,fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>{label}</button>;
+  const Section = ({label,value})=>(
+    <div style={{fontSize:11,fontWeight:700,color:value?B:MU,textTransform:"uppercase",letterSpacing:1,margin:"18px 0 8px",paddingBottom:4,borderBottom:`1px solid ${value?B+"40":BD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      {label}
+      {value&&<span style={{fontSize:10,fontWeight:600,color:B,background:B+"15",borderRadius:10,padding:"1px 8px",textTransform:"none",letterSpacing:0}}>{value}</span>}
+    </div>
+  );
+
+  const Chip = ({label,active,color=B,onClick})=>(
+    <button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?color:BD}`,background:active?color:WH,color:active?WH:TM,fontSize:12,fontWeight:600,whiteSpace:"nowrap",cursor:"pointer"}}>
+      {label}
+    </button>
+  );
+
+  const Dropdown = ({value, onChange, options, placeholder}) => (
+    <select value={value} onChange={e=>onChange(e.target.value)}
+      style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${value?B:BD}`,borderRadius:8,fontSize:13,color:value?B:MU,background:WH,fontWeight:value?600:400,cursor:"pointer"}}>
+      <option value="">{placeholder}</option>
+      {options.filter(Boolean).map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
+  );
 
   const apply = () => { setFilters(f); pop(); };
-  const clear = () => { const empty={cats:[],conds:[],sides:[],make:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""}; setF(empty); setFilters(empty); };
+  const clear = () => {
+    const empty={cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""};
+    setF(empty); setFilters(empty);
+  };
 
   const right = <button onClick={clear} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:13}}>Rensa</button>;
 
   return (
-    // Use flex column so footer stays pinned — no position:fixed needed
     <div className="page" style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",background:BG}}>
       <TopBar title="Filter" onBack={pop} right={right} />
-      {/* Scrollable content */}
       <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"0 14px 20px"}}>
         <div style={{fontSize:13,color:MU,padding:"12px 0"}}>Matchar <strong style={{color:TX}}>{matchCount}</strong> av {items.length} delar</div>
 
-        <Section label="Kategori" />
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{CATEGORIES.map(c=><Chip key={c} label={c} active={f.cats.includes(c)} onClick={()=>toggle(f,"cats",c)}/>)}</div>
+        {/* Kategori — chips */}
+        <Section label="Kategori" value={f.cats.length?`${f.cats.length} valda`:""} />
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {CATEGORIES.map(c=><Chip key={c} label={c} active={f.cats.includes(c)} onClick={()=>toggle("cats",c)}/>)}
+        </div>
 
-        <Section label="Skick" />
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{CONDITIONS.map(c=><Chip key={c} label={c} active={f.conds.includes(c)} color={condColors[c]||MU} onClick={()=>toggle(f,"conds",c)}/>)}</div>
+        {/* Skick — chips med färg */}
+        <Section label="Skick" value={f.conds.length?`${f.conds.length} valda`:""} />
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {CONDITIONS.map(c=><Chip key={c} label={c} active={f.conds.includes(c)} color={condColors[c]||MU} onClick={()=>toggle("conds",c)}/>)}
+        </div>
 
-        <Section label="Sida" />
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{SIDES.filter(Boolean).map(s=><Chip key={s} label={s} active={f.sides.includes(s)} onClick={()=>toggle(f,"sides",s)}/>)}</div>
+        {/* Sida — chips */}
+        <Section label="Sida" value={f.sides.length?`${f.sides.length} valda`:""} />
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {SIDES.filter(Boolean).map(s=><Chip key={s} label={s} active={f.sides.includes(s)} onClick={()=>toggle("sides",s)}/>)}
+        </div>
 
-        <Section label="Bilmärke" />
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>{allMakes.map(m=><Chip key={m} label={m} active={f.make===m} onClick={()=>set("make",f.make===m?"":m)}/>)}</div>
-        <Inp value={f.make} onChange={e=>set("make",e.target.value)} placeholder="Eller skriv märke…" />
+        {/* Koncern — dropdown */}
+        <Section label="Koncern" value={f.brandGroup||""} />
+        <Dropdown value={f.brandGroup} onChange={v=>set("brandGroup",v)} options={allGroups} placeholder="Alla koncerner" />
 
-        <Section label="Modell" />
-        <Inp value={f.model} onChange={e=>set("model",e.target.value)} placeholder="ex. A4 B9, Golf VII…" />
+        {/* Tillverkare — dropdown */}
+        <Section label="Tillverkare" value={f.make||""} />
+        <Dropdown value={f.make} onChange={v=>set("make",v)} options={allMakes} placeholder="Alla tillverkare" />
 
-        <Section label="Årsmodell" />
-        <div style={{display:"flex",gap:10}}><Inp value={f.yearMin} onChange={e=>set("yearMin",e.target.value)} placeholder="Från år" type="number" /><Inp value={f.yearMax} onChange={e=>set("yearMax",e.target.value)} placeholder="Till år" type="number" /></div>
+        {/* Modell — dropdown */}
+        <Section label="Modell" value={f.model||""} />
+        <Dropdown value={f.model} onChange={v=>set("model",v)} options={allModels} placeholder="Alla modeller" />
 
-        <Section label="Pris (kr)" />
-        <div style={{display:"flex",gap:10}}><Inp value={f.priceMin} onChange={e=>set("priceMin",e.target.value)} placeholder="Min" type="number" /><Inp value={f.priceMax} onChange={e=>set("priceMax",e.target.value)} placeholder="Max" type="number" /></div>
+        {/* Placeringstyp — dropdown */}
+        <Section label="Placeringstyp" value={f.locationType||""} />
+        <Dropdown value={f.locationType} onChange={v=>set("locationType",v)} options={allLocTypes} placeholder="Alla placeringstyper" />
 
-        <Section label="Leverantör" />
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>{allSuppliers.map(s=><Chip key={s} label={s} active={f.supplier===s} onClick={()=>set("supplier",f.supplier===s?"":s)}/>)}</div>
-        <Inp value={f.supplier} onChange={e=>set("supplier",e.target.value)} placeholder="Eller skriv leverantör…" />
+        {/* Leverantör — dropdown */}
+        <Section label="Leverantör" value={f.supplier||""} />
+        <Dropdown value={f.supplier} onChange={v=>set("supplier",v)} options={allSuppliers} placeholder="Alla leverantörer" />
 
-        <Section label="Lagerstatus" />
+        {/* Pris — range slider */}
+        <Section label="Pris (kr)" value={(f.priceMin!==""||f.priceMax!=="")?`${pMin.toLocaleString("sv-SE")} – ${pMax.toLocaleString("sv-SE")} kr`:""} />
+        <div style={{padding:"0 6px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:MU,marginBottom:8}}>
+            <span style={{fontWeight:600,color:B}}>{pMin.toLocaleString("sv-SE")} kr</span>
+            <span style={{fontWeight:600,color:B}}>{pMax.toLocaleString("sv-SE")} kr</span>
+          </div>
+          {/* Min slider */}
+          <div style={{position:"relative",height:36}}>
+            <div style={{position:"absolute",top:"50%",left:0,right:0,height:4,background:BD,borderRadius:2,transform:"translateY(-50%)"}}>
+              <div style={{position:"absolute",left:`${((pMin-globalMin)/(globalMax-globalMin||1))*100}%`,right:`${100-((pMax-globalMin)/(globalMax-globalMin||1))*100}%`,height:"100%",background:B,borderRadius:2}}/>
+            </div>
+            <input type="range" min={globalMin} max={globalMax} step={100} value={pMin}
+              onChange={e=>{const v=Number(e.target.value); if(v<=pMax) set("priceMin",String(v));}}
+              style={{position:"absolute",width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
+            <input type="range" min={globalMin} max={globalMax} step={100} value={pMax}
+              onChange={e=>{const v=Number(e.target.value); if(v>=pMin) set("priceMax",String(v));}}
+              style={{position:"absolute",width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:3}}/>
+          </div>
+          {(f.priceMin!==""||f.priceMax!=="")&&(
+            <button onClick={()=>{set("priceMin","");set("priceMax","");}} style={{background:"none",border:"none",color:MU,fontSize:11,cursor:"pointer",textDecoration:"underline",display:"block",marginTop:4}}>Rensa pris</button>
+          )}
+        </div>
+
+        {/* Lagerstatus */}
+        <Section label="Lagerstatus" value={f.low?"Låglager":""} />
         <Chip label="Visa bara låglager (≤3 st)" active={f.low} color={R} onClick={()=>set("low",!f.low)} />
+
       </div>
 
-      {/* Pinned footer — always visible */}
       <div style={{flexShrink:0,padding:"12px 14px",background:WH,borderTop:`1px solid ${BD}`,boxShadow:"0 -4px 12px rgba(0,0,0,.08)"}}>
         <Btn full onClick={apply} style={{padding:"13px"}}>Visa {matchCount} delar</Btn>
       </div>
@@ -3082,10 +3418,10 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
   const save = async () => {
     if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
     if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
-    // SKU genereras automatiskt från artikelnumret — gör att samma del (samma artikelnummer)
-    // alltid grupperas ihop som exemplar, helt osynligt för användaren.
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
-    const payload = { ...f, sku: autoSku };
+    // Normalisera märket automatiskt vid sparning
+    const normalizedMake = normalizeMake(f.make);
+    const payload = { ...f, sku: autoSku, make: normalizedMake };
     if (f.id) { await saveItems(items.map(i=>i.id===f.id?{...payload,updatedAt:Date.now()}:i)); toast$("Uppdaterad","success"); }
     else { await saveItems([...items,{...payload,id:genId("item"),updatedAt:Date.now()}]); toast$("Tillagd","success"); }
     pop();
@@ -3112,9 +3448,13 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
               <input type="text" value={f.stockNumber||""} onChange={e=>set("stockNumber",e.target.value)} placeholder="Lagernr *"
                 style={{width:100,border:`1.5px solid ${(!f.stockNumber?.trim()||dupStockNumber)?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:800,color:WH,background:"rgba(255,255,255,.12)",textAlign:"center"}}/>
             </div>
-            <div>
-              <input type="text" value={f.location} onChange={e=>set("location",e.target.value)} placeholder="Lagerplats / hylla *"
-                style={{width:"100%",border:`1.5px solid ${!f.location?.trim()?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.12)"}}/>
+            <div style={{display:"flex",gap:8}}>
+              <select value={f.locationType||""} onChange={e=>set("locationType",e.target.value)}
+                style={{width:130,border:`1.5px solid rgba(255,255,255,.3)`,borderRadius:7,padding:"9px 10px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.15)"}}>
+                {LOCATION_TYPES.map(t=><option key={t} value={t} style={{background:"#1B3A6B",color:WH}}>{t||"Typ av plats"}</option>)}
+              </select>
+              <input type="text" value={f.location} onChange={e=>set("location",e.target.value)} placeholder="Placering *"
+                style={{flex:1,border:`1.5px solid ${!f.location?.trim()?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.12)"}}/>
             </div>
           </div>
           {dupOem&&<div style={{background:"rgba(255,107,107,.2)",borderRadius:6,padding:"6px 10px",marginTop:8,fontSize:11,fontWeight:700,color:"#FFE0E0"}}><i className="fa-solid fa-triangle-exclamation"/> Artikelnummer finns redan på: {dupOem.name} #{dupOem.stockNumber}</div>}
@@ -3167,7 +3507,7 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
         {/* Details */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Övrig info</div>
-          <G2><H><Inp label="Leverantör" value={f.supplier} onChange={e=>set("supplier",e.target.value)}/></H><H><Inp label="Hyllplats" value={f.location} onChange={e=>set("location",e.target.value)} placeholder="ex. A1-03"/></H></G2>
+          <G2><H><Inp label="Leverantör" value={f.supplier} onChange={e=>set("supplier",e.target.value)}/></H></G2>
           <G2><H><Inp label="Vikt (kg)" value={f.weight} onChange={e=>set("weight",e.target.value)}/></H><H><Inp label="Färgkod" value={f.colorCode} onChange={e=>set("colorCode",e.target.value)} placeholder="ex. 300 Alpinweiss"/></H></G2>
           <div style={{marginTop:4}}>
             <label style={{display:"block",fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Notering</label>
