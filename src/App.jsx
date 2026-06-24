@@ -172,6 +172,7 @@ const CSS = `
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:${BG};}
+body{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
@@ -2544,7 +2545,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           </div>
         )}
 
-        {/* Search + toolbar — rad 1: sök, rad 2: verktyg */}
+        {/* Search + toolbar — sök alltid på rad 1, knappar på rad 2 */}
         <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
           {/* Rad 1 — sökfält */}
           <div style={{position:"relative"}}>
@@ -2552,26 +2553,22 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, OEM, lagernr…"
               style={{width:"100%",padding:"10px 10px 10px 32px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,color:TX,background:WH,boxShadow:SH,boxSizing:"border-box"}} />
           </div>
-          {/* Rad 2 — verktyg */}
+          {/* Rad 2 — knappar */}
           <div style={{display:"flex",gap:6}}>
-            {/* Scan */}
             {(can("canScan")||isAdmin)&&(
               <button onClick={()=>push("scan")} style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,color:TM,boxShadow:SH}}>
                 <Icon name="qrcode"/>
               </button>
             )}
-            {/* Filter */}
             <button onClick={()=>push("filter",{filters,setFilters:applyFilters,items})}
               style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${activeCount>0?B:BD}`,background:activeCount>0?B:WH,color:activeCount>0?WH:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
               <Icon name="sliders"/>
               {activeCount>0&&<span style={{fontSize:11,fontWeight:700,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"1px 6px"}}>{activeCount}</span>}
             </button>
-            {/* Sort */}
             <button onClick={()=>setShowSort(s=>!s)}
               style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${sortBy!=="stockNumber"?B:BD}`,background:sortBy!=="stockNumber"?B+"10":WH,color:sortBy!=="stockNumber"?B:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
               {sortDir==="asc"?<Icon name="arrow-up-short-wide"/>:<Icon name="arrow-down-wide-short"/>}
             </button>
-            {/* View mode */}
             <div style={{display:"flex",gap:5}}>
               <button onClick={()=>setViewMode("cards")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="cards"?B:BD}`,background:viewMode==="cards"?B+"10":WH,color:viewMode==="cards"?B:MU,boxShadow:SH}}>
                 <Icon name="table-cells-large"/>
@@ -2622,23 +2619,6 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             <button onClick={()=>setFilters({cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""})} style={{background:"none",border:"none",color:MU,fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"3px 4px"}}>Rensa alla</button>
           </div>
         )}
-
-        {/* Snabbfilter märken */}
-        {(() => {
-          const makes = [...new Set(items.map(i=>i.make).filter(Boolean))].sort();
-          if (makes.length === 0) return null;
-          return (
-            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,overflowX:"auto",paddingBottom:2}}>
-              <span style={{fontSize:11,color:MU,alignSelf:"center",flexShrink:0}}>Märke:</span>
-              {makes.map(m=>(
-                <button key={m} onClick={()=>setFilters({...filters,make:filters.make===m?"":m})}
-                  style={{flexShrink:0,background:filters.make===m?B:WH,color:filters.make===m?WH:TM,border:`1.5px solid ${filters.make===m?B:BD}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
-                  {m}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
 
         <div style={{fontSize:12,color:MU,marginBottom:10,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span>Visar <strong style={{color:TX}}>{filtered.length}</strong> av {items.length} delar</span>
@@ -2769,8 +2749,17 @@ function GroupCard({ group, can, onOpen }) {
   const location = [best.locationType, best.location].filter(Boolean).join(" ");
 
   return (
-    <div onClick={onOpen} style={{background:WH,borderRadius:10,border:`1.5px solid ${B}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
+    <div onClick={onOpen} style={{background:WH,borderRadius:10,border:`1.5px solid ${BD}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%",position:"relative"}}>
+
+      {/* Placering — top right */}
+      {location&&(
+        <div style={{position:"absolute",top:10,right:10,background:B+"10",borderRadius:5,padding:"3px 7px",display:"flex",alignItems:"center",gap:4,maxWidth:"45%"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:9,color:B,flexShrink:0}}/>
+          <span style={{fontSize:10,fontWeight:700,color:B,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{location}</span>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8,paddingRight:location?100:0}}>
         {/* Image */}
         <div style={{flexShrink:0,width:52,height:52,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
           {best.images?.[0]?<img src={best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
@@ -2789,21 +2778,15 @@ function GroupCard({ group, can, onOpen }) {
           {best.make&&<div style={{fontSize:10,color:MU,marginTop:1}}>
             {best.make}{brandGroup?<span style={{color:B,marginLeft:4,fontWeight:600}}>({brandGroup})</span>:null}
           </div>}
+          {/* Artikelnummer — större */}
+          {best.oem&&<div style={{fontSize:12,fontWeight:700,color:TX,fontFamily:"monospace",marginTop:3}}>{best.oem}</div>}
         </div>
-        {/* Antal — grön/röd */}
-        <div style={{flexShrink:0,textAlign:"right"}}>
+        {/* Antal — alltid grön utom noll=röd */}
+        <div style={{flexShrink:0,textAlign:"right",marginLeft:4}}>
           <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR,lineHeight:1}}>{totalQty}</div>
           <div style={{fontSize:10,color:MU}}>st</div>
         </div>
       </div>
-
-      {/* Placering — stor och tydlig */}
-      {location&&(
-        <div style={{background:B+"08",borderRadius:6,padding:"5px 8px",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B,flexShrink:0}}/>
-          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
-        </div>
-      )}
 
       {/* Bottom: price + hint */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${BD}`,marginTop:"auto"}}>
@@ -2937,41 +2920,40 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
 function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
+  const location = [item.locationType, item.location].filter(Boolean).join(" ");
   return (
-    <div onClick={onDetail} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10}}>
+    <div onClick={onDetail} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px",cursor:"pointer",display:"flex",flexDirection:"column",height:"100%",position:"relative"}}>
+
+      {/* Placering — top right */}
+      {location&&(
+        <div style={{position:"absolute",top:10,right:10,background:B+"10",borderRadius:5,padding:"3px 7px",display:"flex",alignItems:"center",gap:4,maxWidth:"45%"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:9,color:B,flexShrink:0}}/>
+          <span style={{fontSize:10,fontWeight:700,color:B,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{location}</span>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10,paddingRight:location?100:0}}>
         {/* Image */}
-        <div style={{flexShrink:0,width:56,height:56,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>
+        <div style={{flexShrink:0,width:52,height:52,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
           {item.images?.[0]?<img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
         </div>
         {/* Info */}
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-            {item.stockNumber&&<span style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,letterSpacing:.5,flexShrink:0}}>#{item.stockNumber}</span>}
-            <div style={{fontWeight:700,fontSize:14,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
-          </div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-            <Badge label={item.category} color={B} small />
-            <Badge label={item.condition} color={cc(item.condition)} small />
-          </div>
+          {item.stockNumber&&<span style={{background:BG,color:MU,border:`1px solid ${BD}`,borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,letterSpacing:.3,display:"inline-block",marginBottom:3}}>#{item.stockNumber}</span>}
+          <div style={{fontWeight:700,fontSize:14,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
+          {item.make&&<div style={{fontSize:10,color:MU,marginTop:1}}>{item.make}{item.model?` ${item.model}`:""}</div>}
+          {item.oem&&<div style={{fontSize:12,fontWeight:700,color:TX,fontFamily:"monospace",marginTop:3}}>{item.oem}</div>}
         </div>
-        {/* Qty + Price */}
-        <div style={{flexShrink:0,textAlign:"right"}}>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:sc(item.quantity),lineHeight:1}}>{item.quantity}</div>
+        {/* Antal — alltid grön utom noll=röd */}
+        <div style={{flexShrink:0,textAlign:"right",marginLeft:4}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR,lineHeight:1}}>{item.quantity}</div>
           <div style={{fontSize:10,color:MU}}>st</div>
         </div>
       </div>
 
-      {/* SKU + details */}
-      <div style={{fontSize:11,color:MU,marginBottom:6,flex:1}}>
-        <div><span></span>{item.oem&&<span style={{marginLeft:8}}>Art.nr: <strong style={{color:TM}}>{item.oem}</strong></span>}</div>
-        {item.make&&<div style={{marginTop:2,color:TM}}>{item.make}{item.model?` ${item.model}`:""}{item.yearFrom?` (${item.yearFrom}${item.yearTo&&item.yearTo!==item.yearFrom?`–${item.yearTo}`:""})`:"" }</div>}
-        {item.location&&<div style={{marginTop:2}}>Placering: <strong style={{color:TM}}>{item.location}</strong>{item.regNumber&&<span style={{marginLeft:8}}>Reg: <strong style={{color:B}}>{item.regNumber}</strong></span>}</div>}
-      </div>
-
       {/* Price + buttons */}
-      <div style={{display:"flex",alignItems:"center",gap:6,paddingTop:10,borderTop:`1px solid ${BD}`}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:B,marginRight:"auto"}}>{item.price.toLocaleString("sv-SE")} kr</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,paddingTop:10,borderTop:`1px solid ${BD}`,marginTop:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:B,marginRight:"auto"}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
         {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
         {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
         {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
