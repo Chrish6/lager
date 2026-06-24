@@ -9,11 +9,17 @@ const PORT = process.env.PORT || 3000;
 
 // ── mDNS — registrera lager.local på nätverket ────────────────────────────────
 try {
-  const bonjour = require("bonjour-service");
-  const b = new bonjour.Bonjour();
-  b.publish({ name: "Lager", type: "http", port: Number(PORT) });
-} catch {
-  // bonjour-service inte installerat — ignorera
+  const { Bonjour } = require("bonjour-service");
+  const bonjour = new Bonjour();
+  bonjour.publish({
+    name: "lager",
+    type: "http",
+    port: Number(PORT),
+    host: "lager.local",
+    txt: { path: "/" }
+  });
+} catch (e) {
+  console.log("  mDNS:     Bonjour ej tillgängligt -", e.message);
 }
 
 const app  = express();
