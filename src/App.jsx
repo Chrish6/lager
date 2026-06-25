@@ -98,6 +98,24 @@ async function deleteOneItem(id) {
   } catch { return null; }
 }
 
+// Bilder — hämta för en artikel
+async function getImages(id) {
+  try {
+    const r = await fetch(`${API}/images/${id}`).then(r=>r.json());
+    return r.images || [];
+  } catch { return []; }
+}
+// Bilder — spara för en artikel
+async function setImages(id, images) {
+  try {
+    const r = await fetch(`${API}/images/${id}`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ images })
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
 // ─── Lösenordshashning — snabb enkel hash ─────────────────────────────────────
 function hashPassword(plain) {
   // Enkel men tillräcklig hash för lokalt system
@@ -674,7 +692,7 @@ function AppInner() {
   const isAdmin = currentUser?.role === "admin";
   const can = p => { if (!currentUser) return p==="canView"; if (isAdmin) return true; return !!currentUser.permissions?.[p]; };
 
-  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters };
+  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, setItems, setSales, setSettings, setSuppliers };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -2266,13 +2284,23 @@ function SuppliersPage({ suppliers, saveSuppliers, items, pop, toast$, can, isAd
 }
 
 // ─── Backup Page ──────────────────────────────────────────────────────────────
-function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, pop, toast$, can, isAdmin }) {
+function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, setItems, setSales, setSettings, setSuppliers, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBackup")) return <Page><TopBar title="Backup" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [restoring, setRestoring] = useState(false);
   const fileRef = useRef(null);
 
-  const doBackup = () => {
-    const data = { version:2, exportedAt:new Date().toISOString(), items, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers };
+  const doBackup = async () => {
+    // Samla ihop bilderna via snabb endpoint för komplett backup
+    const itemsWithImages = [];
+    for (const it of items) {
+      if (it.hasImages > 0 && (!it.images || it.images.length === 0)) {
+        const imgs = await getImages(it.id);
+        itemsWithImages.push({ ...it, images: imgs || [] });
+      } else {
+        itemsWithImages.push(it);
+      }
+    }
+    const data = { version:3, exportedAt:new Date().toISOString(), items: itemsWithImages, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers };
     const json = JSON.stringify(data, null, 2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([json],{type:"application/json"}));
@@ -2289,34 +2317,28 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
       const data = JSON.parse(text);
       if (!data.items || !data.users) throw new Error("Ogiltig backup-fil");
 
-      // Komprimera/begränsa bilder så datan inte blir för stor.
-      // Behåll bara första bilden per del om de är stora.
-      const totalSize = JSON.stringify(data.items).length;
-      let cleanedItems = data.items;
-      if (totalSize > 30 * 1024 * 1024) {
-        // Över 30MB — behåll bara första bilden per del
-        cleanedItems = data.items.map(it => ({
-          ...it,
-          images: it.images?.length > 0 ? [it.images[0]] : [],
-        }));
-        toast$("Stora bilder begränsades för att rymmas","info");
-      }
+      // Skicka HELA backupen i ETT anrop — servern delar upp den snabbt lokalt
+      const res = await fetch(`${API}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: data.items,
+          sales: data.sales || [],
+          users: data.users || [],
+          settings: data.settings || null,
+          suppliers: data.suppliers || [],
+        }),
+      });
+      if (!res.ok) throw new Error(`Serverfel ${res.status}`);
+      const result = await res.json();
 
-      const ok = await sset("ow:items", cleanedItems);
-      if (!ok) throw new Error("Datan är för stor — försök med färre bilder");
-      await saveItems(cleanedItems);
+      // Uppdatera appen med den lätta listan
+      if (result.items) setItems(result.items);
+      if (data.sales) setSales?.(data.sales);
+      if (data.settings) setSettings?.(data.settings);
+      if (data.suppliers) setSuppliers?.(data.suppliers);
 
-      if (data.sales) await saveSales(data.sales);
-      if (data.users) await sset("ow:users", data.users);
-      if (data.settings) await saveSettings(data.settings);
-      if (data.suppliers) await saveSuppliers(data.suppliers);
-
-      const check = await sget("ow:items");
-      if (!check || check.length !== cleanedItems.length) {
-        throw new Error(`Endast ${check?.length||0} av ${cleanedItems.length} sparades`);
-      }
-
-      toast$(`Klart! ${cleanedItems.length} delar återställda`,"success");
+      toast$(`Klart! ${result.count} delar återställda`,"success");
     } catch(e) {
       toast$("Fel: "+e.message,"error");
     }
@@ -3181,9 +3203,26 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
-  const imgs = item.images?.length>0 ? item.images : [];
+  const [loadedImages, setLoadedImages] = useState(null);
   const touchRef = useRef(null);
   const bilInfoUrl = item.regNumber ? `https://www.biluppgifter.se/fordon/${item.regNumber.replace(/\s/g,"")}` : null;
+
+  // Ladda bilder separat när sidan öppnas (snabb endpoint)
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (item.images?.length > 0) { setLoadedImages(item.images); return; }
+      if (item.hasImages > 0) {
+        const imgs = await getImages(item.id);
+        if (active) setLoadedImages(imgs);
+      } else {
+        setLoadedImages([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [item.id]);
+
+  const imgs = loadedImages || (item.images?.length>0 ? item.images : []);
 
   const handleTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const handleTouchEnd = e => {
@@ -3601,6 +3640,16 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const fRef = useRef(); const cRef = useRef();
 
+  // Ladda befintliga bilder (snabb endpoint)
+  useEffect(() => {
+    if (item?.id && (!item.images || item.images.length===0) && item.hasImages > 0) {
+      (async () => {
+        const imgs = await getImages(item.id);
+        if (imgs?.length) setF(p => ({...p, images: imgs}));
+      })();
+    }
+  }, [item?.id]);
+
   // ── Duplicate detection ────────────────────────────────────────────────────
   const otherItems = items.filter(i => i.id !== f.id);
   const dupStockNumber = f.stockNumber?.trim() && otherItems.find(i => i.stockNumber?.trim() === f.stockNumber?.trim());
@@ -3655,12 +3704,15 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
     const id = f.id || genId("item");
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now() };
-    // Item-level spar — skriver bara över DENNA artikel, inte andras ändringar
+
+    // Spara bilderna separat via snabb endpoint — håll items-listan liten
+    const imgs = f.images || [];
+    await setImages(id, imgs);
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length };
+
     const updated = await saveOneItem(payload);
     if (updated) { saveItems(updated); toast$(f.id?"Uppdaterad":"Tillagd","success"); }
     else {
-      // Fallback om servern inte svarar
       if (f.id) await saveItems(items.map(i=>i.id===f.id?payload:i));
       else await saveItems([...items,payload]);
       toast$(f.id?"Uppdaterad":"Tillagd","success");
@@ -3674,7 +3726,11 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
     const id = f.id || genId("item");
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now() };
+
+    const imgs = f.images || [];
+    await setImages(id, imgs);
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length };
+
     const updated = await saveOneItem(payload);
     const newList = updated || (f.id ? items.map(i=>i.id===f.id?payload:i) : [...items,payload]);
     saveItems(newList);
