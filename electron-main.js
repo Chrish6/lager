@@ -96,7 +96,11 @@ function createWindow(url) {
     title: "Lager",
     backgroundColor: "#F5F5F7",
     autoHideMenuBar: true,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false, // Förhindra att appen "fryser" vid inaktivitet
+    },
     show: false,
   });
 
@@ -106,6 +110,30 @@ function createWindow(url) {
   mainWindow.webContents.setWindowOpenHandler(({ url: u }) => {
     if (!u.startsWith(url)) { shell.openExternal(u); return { action: "deny" }; }
     return { action: "allow" };
+  });
+
+  // ── Krasch-återställning — laddar om automatiskt om sidan blir vit ──
+  mainWindow.webContents.on("render-process-gone", (event, details) => {
+    console.log("[recovery] Render-processen kraschade:", details.reason);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(url);
+    }
+  });
+
+  mainWindow.webContents.on("unresponsive", () => {
+    console.log("[recovery] Sidan svarar inte — laddar om...");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+    }
+  });
+
+  // Om sidan misslyckas att ladda — försök igen efter 2 sek
+  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDesc) => {
+    if (errorCode === -3) return; // Avbruten — ignorera
+    console.log("[recovery] Laddning misslyckades:", errorDesc);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url);
+    }, 2000);
   });
 
   mainWindow.on("closed", () => { mainWindow = null; });
