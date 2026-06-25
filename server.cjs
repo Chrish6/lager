@@ -101,6 +101,36 @@ app.delete("/api/:key", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Item-level operations (undviker att skriva över andras ändringar) ─────────
+// Uppdatera/lägg till EN artikel
+app.post("/api/item/upsert", async (req, res) => {
+  try {
+    stats.requests++;
+    const item = req.body.item;
+    if (!item || !item.id) return res.status(400).json({ error: "item.id krävs" });
+    const row = await dbGet("ow:items");
+    const items = row ? JSON.parse(row.value) : [];
+    const idx = items.findIndex(i => i.id === item.id);
+    if (idx >= 0) items[idx] = item;
+    else items.push(item);
+    await dbSet("ow:items", JSON.stringify(items));
+    res.json({ ok: true, items });
+  } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
+});
+
+// Ta bort EN artikel
+app.post("/api/item/delete", async (req, res) => {
+  try {
+    stats.requests++;
+    const id = req.body.id;
+    const row = await dbGet("ow:items");
+    const items = row ? JSON.parse(row.value) : [];
+    const filtered = items.filter(i => i.id !== id);
+    await dbSet("ow:items", JSON.stringify(filtered));
+    res.json({ ok: true, items: filtered });
+  } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 app.get("/admin/api/status", async (req, res) => {
   const uptimeS = Math.floor((Date.now() - stats.started) / 1000);
