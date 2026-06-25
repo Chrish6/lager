@@ -3498,12 +3498,42 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
     if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
-    // Normalisera märket automatiskt vid sparning
     const normalizedMake = normalizeMake(f.make);
     const payload = { ...f, sku: autoSku, make: normalizedMake };
     if (f.id) { await saveItems(items.map(i=>i.id===f.id?{...payload,updatedAt:Date.now()}:i)); toast$("Uppdaterad","success"); }
     else { await saveItems([...items,{...payload,id:genId("item"),updatedAt:Date.now()}]); toast$("Tillagd","success"); }
     pop();
+  };
+
+  // Spara nuvarande och öppna nytt exemplar med samma info men nytt lagernr
+  const saveAndNew = async () => {
+    if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
+    if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
+    const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+    const normalizedMake = normalizeMake(f.make);
+    const payload = { ...f, sku: autoSku, make: normalizedMake };
+
+    let updatedItems;
+    if (f.id) { updatedItems = items.map(i=>i.id===f.id?{...payload,updatedAt:Date.now()}:i); }
+    else { updatedItems = [...items,{...payload,id:genId("item"),updatedAt:Date.now()}]; }
+    await saveItems(updatedItems);
+    toast$("Sparad — fyll i nästa exemplar","success");
+
+    // Nästa lagernummer baserat på uppdaterad lista
+    const used = new Set(updatedItems.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
+    let n = 1; while (used.has(n)) n++;
+
+    // Behåll del-info men nollställ lagernr, antal och bilder
+    setF({
+      ...f,
+      id: undefined,
+      stockNumber: String(n),
+      quantity: 1,
+      images: [],
+      regNumber: "",
+    });
+    // Scrolla upp
+    window.scrollTo(0, 0);
   };
 
   const R2 = <Btn small onClick={save} style={{padding:"5px 14px"}}>Spara</Btn>;
@@ -3594,7 +3624,12 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
           </div>
         </div>
 
-        <Btn full onClick={save} style={{padding:"13px"}}>{item?"Spara ändringar":"Lägg till del"}</Btn>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <Btn full onClick={save} style={{padding:"13px"}}>{item?"Spara ändringar":"Lägg till del"}</Btn>
+          <Btn full variant="ghost" onClick={saveAndNew} style={{padding:"13px"}}>
+            <i className="fa-solid fa-plus"/> Spara &amp; lägg till nytt exemplar
+          </Btn>
+        </div>
       </div>
     </Page>
   );
