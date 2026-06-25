@@ -99,7 +99,6 @@ function createWindow(url) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      backgroundThrottling: false, // Förhindra att appen "fryser" vid inaktivitet
     },
     show: false,
   });
@@ -112,28 +111,39 @@ function createWindow(url) {
     return { action: "allow" };
   });
 
-  // ── Krasch-återställning — laddar om automatiskt om sidan blir vit ──
+  // ── Krasch-återställning — laddar om bara vid faktiska krascher ──
+  let reloading = false;
+  const safeReload = () => {
+    if (reloading || !mainWindow || mainWindow.isDestroyed()) return;
+    reloading = true;
+    // Vänta tills servern svarar igen innan omladdning
+    const tryReload = (attempts = 0) => {
+      if (!mainWindow || mainWindow.isDestroyed()) { reloading = false; return; }
+      const host = url.replace(/^https?:\/\//, "").split(":")[0];
+      const port = Number(url.split(":").pop()) || PORT;
+      const req = http.get({ host, port, path: "/api/network", timeout: 1500 }, () => {
+        mainWindow.loadURL(url);
+        reloading = false;
+      });
+      req.on("error", () => {
+        if (attempts < 30) setTimeout(() => tryReload(attempts + 1), 2000);
+        else reloading = false;
+      });
+      req.on("timeout", () => { req.destroy(); if (attempts < 30) setTimeout(() => tryReload(attempts + 1), 2000); else reloading = false; });
+    };
+    tryReload();
+  };
+
   mainWindow.webContents.on("render-process-gone", (event, details) => {
     console.log("[recovery] Render-processen kraschade:", details.reason);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.loadURL(url);
-    }
+    safeReload();
   });
 
-  mainWindow.webContents.on("unresponsive", () => {
-    console.log("[recovery] Sidan svarar inte — laddar om...");
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.reload();
-    }
-  });
-
-  // Om sidan misslyckas att ladda — försök igen efter 2 sek
-  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDesc) => {
-    if (errorCode === -3) return; // Avbruten — ignorera
-    console.log("[recovery] Laddning misslyckades:", errorDesc);
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url);
-    }, 2000);
+  // Ladda om när datorn vaknar från viloläge
+  const { powerMonitor } = require("electron");
+  powerMonitor.on("resume", () => {
+    console.log("[recovery] Datorn vaknade — kontrollerar anslutning...");
+    safeReload();
   });
 
   mainWindow.on("closed", () => { mainWindow = null; });
