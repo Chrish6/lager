@@ -60,7 +60,21 @@ async function sget(k) {
   try { const r = await fetch(`${API}/${k}`).then(r=>r.json()); return r ? JSON.parse(r.value) : null; } catch { return null; }
 }
 async function sset(k,v) {
-  try { await fetch(`${API}/${k}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({value:JSON.stringify(v)}) }); } catch {}
+  try {
+    const res = await fetch(`${API}/${k}`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({value:JSON.stringify(v)})
+    });
+    if (!res.ok) {
+      console.error(`Sparning misslyckades för ${k}: HTTP ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`Sparning misslyckades för ${k}:`, e.message);
+    return false;
+  }
 }
 
 // Item-level: uppdatera/lägg till EN artikel utan att skriva över andras ändringar
@@ -2274,13 +2288,26 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
       const text = await file.text();
       const data = JSON.parse(text);
       if (!data.items || !data.users) throw new Error("Ogiltig backup-fil");
-      if (data.items) await saveItems(data.items);
+
+      // Spara till servern och verifiera
+      const ok = await sset("ow:items", data.items);
+      if (!ok) throw new Error("Kunde inte spara till servern");
+      await saveItems(data.items);
+
       if (data.sales) await saveSales(data.sales);
+      if (data.users) await sset("ow:users", data.users);
       if (data.settings) await saveSettings(data.settings);
       if (data.suppliers) await saveSuppliers(data.suppliers);
-      toast$("Återställning klar!","success");
+
+      // Verifiera mot servern
+      const check = await sget("ow:items");
+      if (!check || check.length !== data.items.length) {
+        throw new Error(`Endast ${check?.length||0} av ${data.items.length} sparades`);
+      }
+
+      toast$(`Klart! ${data.items.length} delar återställda`,"success");
     } catch(e) {
-      toast$("Fel vid återställning: "+e.message,"error");
+      toast$("Fel: "+e.message,"error");
     }
     setRestoring(false);
   };
