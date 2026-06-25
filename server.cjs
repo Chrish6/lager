@@ -7,17 +7,31 @@ const fs      = require("fs");
 
 const PORT = process.env.PORT || 3000;
 
+// Förhindra att servern kraschar av oväntade fel (t.ex. mDNS-konflikter)
+process.on("uncaughtException", (err) => {
+  console.error("[Ohanterat fel — servern fortsätter]:", err.message);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[Ohanterad rejection — servern fortsätter]:", err?.message || err);
+});
+
 // ── mDNS — registrera lager.local på nätverket ────────────────────────────────
 try {
   const { Bonjour } = require("bonjour-service");
   const bonjour = new Bonjour();
-  bonjour.publish({
+  const service = bonjour.publish({
     name: "lager",
     type: "http",
     port: Number(PORT),
     host: "lager.local",
     txt: { path: "/" }
   });
+  // Fånga asynkrona fel (t.ex. "name already in use") så servern inte kraschar
+  if (service && service.on) {
+    service.on("error", (err) => {
+      console.log("  mDNS:     Bonjour-varning -", err.message);
+    });
+  }
 } catch (e) {
   console.log("  mDNS:     Bonjour ej tillgängligt -", e.message);
 }
