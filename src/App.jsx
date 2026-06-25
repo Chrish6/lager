@@ -56,6 +56,27 @@ function printHtml(html) {
   }
 }
 
+// Skapa en liten thumbnail (~120px) från en base64-bild — bara några KB
+function makeThumbnail(dataUrl) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 120;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.5));
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    } catch { resolve(null); }
+  });
+}
+
 async function sget(k) {
   try { const r = await fetch(`${API}/${k}`).then(r=>r.json()); return r ? JSON.parse(r.value) : null; } catch { return null; }
 }
@@ -598,24 +619,6 @@ function AppInner() {
       let sup = await sget("ow:suppliers"); if (!sup) { sup=[]; }
       let fav = await sget("ow:favorites"); if (!fav) { fav=[]; }
 
-      // ── ENGÅNGS-MIGRERING ──────────────────────────────────────────────
-      // Om items fortfarande har inbäddade bilder (gammalt format), flytta
-      // ut dem till bildtabellen via /api/restore och gör listan lätt.
-      const hasEmbeddedImages = Array.isArray(i) && i.some(it => it.images && it.images.length > 0);
-      if (hasEmbeddedImages) {
-        try {
-          const res = await fetch(`${API}/restore`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: i, sales: s, users: u, settings: st, suppliers: sup }),
-          });
-          if (res.ok) {
-            const result = await res.json();
-            if (result.items) i = result.items; // nu lätt lista
-          }
-        } catch {}
-      }
-
       setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setLoaded(true);
 
       // Öppna direkt på artikeln om URL:en innehåller ?item=ID (delad länk)
@@ -913,7 +916,7 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
             <div key={r.key} style={{background:WH,borderRadius:10,border:`1px solid ${overStock?R:BD}`,padding:14,marginBottom:10}}>
               <div style={{display:"flex",gap:10,marginBottom:10}}>
                 <div style={{width:44,height:44,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {r.item.images?.[0]?<img src={r.item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
+                  {(r.item.thumb||r.item.images?.[0])?<img src={r.item.thumb||r.item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
@@ -2933,7 +2936,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                     // Group row
                     const base=g[0];
                     return <tr key={key} onClick={()=>push("variants",{sku:base.sku})} style={{cursor:"pointer",background:B+"04",borderBottom:`1px solid ${BD}`}}>
-                      <td style={{padding:"6px 10px"}}><div style={{display:"flex",gap:3}}>{g.slice(0,3).map(i=>i.images?.[0]?<img key={i.id} src={i.images[0]} style={{width:24,height:24,borderRadius:4,objectFit:"cover"}} alt=""/>:<div key={i.id} style={{width:24,height:24,borderRadius:4,background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="fa-solid fa-wrench" style={{fontSize:10,color:MU}}/></div>)}</div></td>
+                      <td style={{padding:"6px 10px"}}><div style={{display:"flex",gap:3}}>{g.slice(0,3).map(i=>(i.thumb||i.images?.[0])?<img key={i.id} src={i.thumb||i.images[0]} style={{width:24,height:24,borderRadius:4,objectFit:"cover"}} alt=""/>:<div key={i.id} style={{width:24,height:24,borderRadius:4,background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="fa-solid fa-wrench" style={{fontSize:10,color:MU}}/></div>)}</div></td>
                       <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{base.name}{base.side?` — ${base.side}`:""}</div><div style={{fontSize:10,color:B,fontWeight:700}}><i className="fa-solid fa-layer-group"/> {g.length} exemplar</div></td>
                       <td style={{padding:"7px 10px",fontSize:12,color:MU}}>{base.sku}</td>
                       <td style={{padding:"7px 10px"}}><Badge label={base.category} color={B} small/></td>
@@ -2986,7 +2989,7 @@ function GroupCard({ group, can, onOpen }) {
       {/* Rad 1: bild + info */}
       <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
         <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {best.images?.[0]?<img src={best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
+          {(best.thumb||best.images?.[0])?<img src={best.thumb||best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
           {/* Lagernummer — blå */}
@@ -3079,11 +3082,11 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
                 <div style={{display:"flex",gap:12,padding:14,alignItems:"center"}}>
                   {/* Small image or icon */}
                   <div style={{flexShrink:0,width:64,height:64,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                    {item.images?.[0]
-                      ? <img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    {(item.thumb||item.images?.[0])
+                      ? <img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       : <i className="fa-solid fa-image" style={{fontSize:22,color:BD}}/>
                     }
-                    {item.images?.length>1&&<div style={{position:"absolute",bottom:2,right:2,background:"rgba(0,0,0,.6)",color:WH,borderRadius:3,padding:"1px 4px",fontSize:8,fontWeight:600}}>{item.images.length}<i className="fa-solid fa-image" style={{marginLeft:2}}/></div>}
+                    {(item.hasImages||item.images?.length)>1&&<div style={{position:"absolute",bottom:2,right:2,background:"rgba(0,0,0,.6)",color:WH,borderRadius:3,padding:"1px 4px",fontSize:8,fontWeight:600}}>{item.hasImages||item.images.length}<i className="fa-solid fa-image" style={{marginLeft:2}}/></div>}
                   </div>
 
                   {/* Info */}
@@ -3156,7 +3159,7 @@ function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, o
       {/* Rad 1: lagernummer blå + namn */}
       <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
         <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {item.images?.[0]?<img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
+          {(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
           {item.stockNumber&&<div style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,display:"inline-block",marginBottom:3,letterSpacing:.3}}>#{item.stockNumber}</div>}
@@ -3197,7 +3200,7 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
   const [bg, setBg] = useState("transparent");
   return (
     <tr style={{borderBottom:`1px solid ${BD}50`,cursor:"pointer",background:bg}} onMouseEnter={()=>setBg(BG)} onMouseLeave={()=>setBg("transparent")} onClick={onDetail}>
-      <td style={{padding:"7px 10px"}}><div style={{width:36,height:36,borderRadius:6,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{item.images?.[0]?<img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}</div></td>
+      <td style={{padding:"7px 10px"}}><div style={{width:36,height:36,borderRadius:6,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}</div></td>
       <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>}{item.name}{item.side&&<span style={{color:MU,fontWeight:400}}> — {item.side}</span>}</div>{item.oem&&<div style={{fontSize:11,color:MU}}>Art.nr: {item.oem}</div>}</td>
       <td style={{padding:"7px 10px",fontSize:11,color:MU}}>{item.sku}</td>
       <td style={{padding:"7px 10px"}}><Badge label={item.category} color={B} small /></td>
@@ -3224,25 +3227,36 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
   const [loadedImages, setLoadedImages] = useState(null);
+  const [imgLoading, setImgLoading] = useState(false);
   const touchRef = useRef(null);
   const bilInfoUrl = item.regNumber ? `https://www.biluppgifter.se/fordon/${item.regNumber.replace(/\s/g,"")}` : null;
 
-  // Ladda bilder separat när sidan öppnas (snabb endpoint)
+  // Ladda bilder separat när sidan öppnas — robust med retry
   useEffect(() => {
     let active = true;
     (async () => {
+      // Bilder redan i objektet (precis sparade)
       if (item.images?.length > 0) { setLoadedImages(item.images); return; }
-      if (item.hasImages > 0) {
-        const imgs = await getImages(item.id);
-        if (active) setLoadedImages(imgs);
-      } else {
-        setLoadedImages([]);
+      // Inga bilder alls
+      if (!item.hasImages || item.hasImages === 0) { setLoadedImages([]); return; }
+      // Hämta fulla bilder, försök två gånger vid fel
+      setImgLoading(true);
+      let imgs = await getImages(item.id);
+      if ((!imgs || imgs.length === 0) && active) {
+        await new Promise(r => setTimeout(r, 600));
+        imgs = await getImages(item.id);
+      }
+      if (active) {
+        // Om hämtning misslyckades men vi har en thumbnail — visa den så länge
+        if ((!imgs || imgs.length === 0) && item.thumb) setLoadedImages([item.thumb]);
+        else setLoadedImages(imgs || []);
+        setImgLoading(false);
       }
     })();
     return () => { active = false; };
   }, [item.id]);
 
-  const imgs = loadedImages || (item.images?.length>0 ? item.images : []);
+  const imgs = loadedImages !== null ? loadedImages : (item.thumb ? [item.thumb] : []);
 
   const handleTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const handleTouchEnd = e => {
@@ -3728,7 +3742,9 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     // Spara bilderna separat via snabb endpoint — håll items-listan liten
     const imgs = f.images || [];
     await setImages(id, imgs);
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length };
+    // Skapa en liten thumbnail för kortet (några KB, håller listan snabb)
+    const thumb = imgs.length > 0 ? await makeThumbnail(imgs[0]) : null;
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
 
     const updated = await saveOneItem(payload);
     if (updated) { saveItems(updated); toast$(f.id?"Uppdaterad":"Tillagd","success"); }
@@ -3749,7 +3765,8 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
 
     const imgs = f.images || [];
     await setImages(id, imgs);
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length };
+    const thumb = imgs.length > 0 ? await makeThumbnail(imgs[0]) : null;
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
 
     const updated = await saveOneItem(payload);
     const newList = updated || (f.id ? items.map(i=>i.id===f.id?payload:i) : [...items,payload]);
@@ -3939,7 +3956,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
         {/* Item summary */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,marginBottom:12,display:"flex",gap:12,alignItems:"center"}}>
           <div style={{width:56,height:56,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>
-            {item.images?.[0]?<img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
+            {(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
           </div>
           <div style={{flex:1}}>
             {item.stockNumber&&<div style={{display:"inline-flex",alignItems:"center",gap:4,background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,marginBottom:4}}>#{item.stockNumber}</div>}
