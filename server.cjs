@@ -29,6 +29,11 @@ const DB_PATH = path.join(__dirname, "lager.db");
 const db = new sqlite3.Database(DB_PATH);
 
 db.serialize(() => {
+  // WAL-läge — bättre samtidighet, mindre risk för "database is locked"
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 5000");
+  db.run("PRAGMA synchronous = NORMAL");
+
   db.run(`CREATE TABLE IF NOT EXISTS store (
     key TEXT PRIMARY KEY,
     value TEXT,
@@ -67,7 +72,8 @@ function dbDel(key) {
 const stats = { started: Date.now(), requests: 0, errors: 0 };
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 app.use(express.static(path.join(__dirname, "dist")));
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -89,9 +95,16 @@ app.get("/api/:key", async (req, res) => {
 app.post("/api/:key", async (req, res) => {
   try {
     stats.requests++;
+    if (req.body.value === undefined) {
+      return res.status(400).json({ error: "value saknas i body" });
+    }
     await dbSet(req.params.key, req.body.value);
     res.json({ ok: true });
-  } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    stats.errors++;
+    console.error(`[FEL] POST /api/${req.params.key}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete("/api/:key", async (req, res) => {
