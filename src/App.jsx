@@ -578,17 +578,30 @@ function AppInner() {
     })();
   }, []);
 
+  // Håll en ref till stack så polling-intervallet aldrig återskapas
+  const stackRef = useRef(stack);
+  useEffect(() => { stackRef.current = stack; }, [stack]);
+
   useEffect(() => {
+    // EN enda interval för hela appens livstid — undviker minnesläcka
     const id = setInterval(async () => {
-      // Polla INTE under redigering/försäljning — annars skrivs ändringar över
-      const onEditPage = stack.some(s => ["edit","sell","checkout","bulkedit","import"].includes(s.name));
+      const onEditPage = stackRef.current.some(s => ["edit","sell","checkout","bulkedit","import"].includes(s.name));
       if (onEditPage) return;
-      const u = await sget("ow:users"); const i = await sget("ow:items");
-      if (u) setUsers(prev => JSON.stringify(prev)!==JSON.stringify(u)?u:prev);
-      if (i) setItems(prev => JSON.stringify(prev)!==JSON.stringify(i)?i:prev);
-    }, 8000);
+      try {
+        const i = await sget("ow:items");
+        if (i && Array.isArray(i)) {
+          setItems(prev => {
+            // Snabb jämförelse: längd + senaste ändring, inte hela JSON
+            if (prev.length !== i.length) return i;
+            const prevStamp = prev.reduce((a,x)=>a+(x.updatedAt||0),0);
+            const newStamp = i.reduce((a,x)=>a+(x.updatedAt||0),0);
+            return prevStamp !== newStamp ? i : prev;
+          });
+        }
+      } catch {}
+    }, 10000);
     return () => clearInterval(id);
-  }, [stack]);
+  }, []); // Tom dependency — körs bara en gång
 
   const toast$ = useCallback((msg, type="info") => {
     setToast({msg,type}); clearTimeout(tRef.current);
