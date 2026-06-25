@@ -13,6 +13,27 @@ async function sset(k,v) {
   try { await fetch(`${API}/${k}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({value:JSON.stringify(v)}) }); } catch {}
 }
 
+// Item-level: uppdatera/lägg till EN artikel utan att skriva över andras ändringar
+async function saveOneItem(item) {
+  try {
+    const r = await fetch(`${API}/item/upsert`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ item })
+    }).then(r=>r.json());
+    return r.items || null;
+  } catch { return null; }
+}
+// Item-level: ta bort EN artikel
+async function deleteOneItem(id) {
+  try {
+    const r = await fetch(`${API}/item/delete`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ id })
+    }).then(r=>r.json());
+    return r.items || null;
+  } catch { return null; }
+}
+
 // ─── Lösenordshashning — snabb enkel hash ─────────────────────────────────────
 function hashPassword(plain) {
   // Enkel men tillräcklig hash för lokalt system
@@ -505,11 +526,15 @@ export default function App() {
 
   useEffect(() => {
     const id = setInterval(async () => {
+      // Polla INTE under redigering/försäljning — annars skrivs ändringar över
+      const onEditPage = stack.some(s => ["edit","sell","checkout","bulkedit","import"].includes(s.name));
+      if (onEditPage) return;
       const u = await sget("ow:users"); const i = await sget("ow:items");
-      if (u) setUsers(u); if (i) setItems(i);
+      if (u) setUsers(prev => JSON.stringify(prev)!==JSON.stringify(u)?u:prev);
+      if (i) setItems(prev => JSON.stringify(prev)!==JSON.stringify(i)?i:prev);
     }, 8000);
     return () => clearInterval(id);
-  }, []);
+  }, [stack]);
 
   const toast$ = useCallback((msg, type="info") => {
     setToast({msg,type}); clearTimeout(tRef.current);
@@ -3499,40 +3524,36 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
-    const payload = { ...f, sku: autoSku, make: normalizedMake };
-    if (f.id) { await saveItems(items.map(i=>i.id===f.id?{...payload,updatedAt:Date.now()}:i)); toast$("Uppdaterad","success"); }
-    else { await saveItems([...items,{...payload,id:genId("item"),updatedAt:Date.now()}]); toast$("Tillagd","success"); }
+    const id = f.id || genId("item");
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now() };
+    // Item-level spar — skriver bara över DENNA artikel, inte andras ändringar
+    const updated = await saveOneItem(payload);
+    if (updated) { saveItems(updated); toast$(f.id?"Uppdaterad":"Tillagd","success"); }
+    else {
+      // Fallback om servern inte svarar
+      if (f.id) await saveItems(items.map(i=>i.id===f.id?payload:i));
+      else await saveItems([...items,payload]);
+      toast$(f.id?"Uppdaterad":"Tillagd","success");
+    }
     pop();
   };
 
-  // Spara nuvarande och öppna nytt exemplar med samma info men nytt lagernr
   const saveAndNew = async () => {
     if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
     if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
-    const payload = { ...f, sku: autoSku, make: normalizedMake };
-
-    let updatedItems;
-    if (f.id) { updatedItems = items.map(i=>i.id===f.id?{...payload,updatedAt:Date.now()}:i); }
-    else { updatedItems = [...items,{...payload,id:genId("item"),updatedAt:Date.now()}]; }
-    await saveItems(updatedItems);
+    const id = f.id || genId("item");
+    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now() };
+    const updated = await saveOneItem(payload);
+    const newList = updated || (f.id ? items.map(i=>i.id===f.id?payload:i) : [...items,payload]);
+    saveItems(newList);
     toast$("Sparad — fyll i nästa exemplar","success");
 
-    // Nästa lagernummer baserat på uppdaterad lista
-    const used = new Set(updatedItems.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
+    const used = new Set(newList.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
     let n = 1; while (used.has(n)) n++;
 
-    // Behåll del-info men nollställ lagernr, antal och bilder
-    setF({
-      ...f,
-      id: undefined,
-      stockNumber: String(n),
-      quantity: 1,
-      images: [],
-      regNumber: "",
-    });
-    // Scrolla upp
+    setF({ ...f, id: undefined, stockNumber: String(n), quantity: 1, images: [], regNumber: "" });
     window.scrollTo(0, 0);
   };
 
