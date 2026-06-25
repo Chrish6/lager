@@ -117,6 +117,13 @@ app.post("/api/:key", async (req, res) => {
     if (req.body.value === undefined) {
       return res.status(400).json({ error: "value saknas i body" });
     }
+    // SKYDD: vägra skriva över ow:items med tom lista om det redan finns data
+    if (req.params.key === "ow:items" && req.body.value === "[]") {
+      const existing = await dbGet("ow:items");
+      if (existing && existing.value && existing.value !== "[]" && existing.value.length > 10) {
+        return res.status(400).json({ error: "Vägrar tömma befintligt lager" });
+      }
+    }
     await dbSet(req.params.key, req.body.value);
     res.json({ ok: true });
   } catch (e) {
@@ -192,6 +199,11 @@ app.post("/api/restore", async (req, res) => {
   try {
     stats.requests++;
     const { items = [], sales = [], users = [], settings = null, suppliers = [] } = req.body;
+
+    // SKYDD: vägra spara en tom lista — förhindrar att data raderas av misstag
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "Tom lista — återställning avbruten för att skydda data" });
+    }
 
     // Dela upp items i lätt lista + bilder, allt på servern (snabbt, lokalt)
     const lightItems = [];
