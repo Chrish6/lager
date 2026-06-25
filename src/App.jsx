@@ -760,15 +760,22 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     });
 
     // Deduct stock
-    // Uppdatera varje såld artikel individuellt mot servern
+    // Uppdatera varje såld artikel — ta bort om antal når 0
     let latestItems = items;
     for (const entry of saleEntries) {
       const it = latestItems.find(i=>i.id===entry.itemId);
       if (it) {
-        const updatedItem = {...it, quantity: it.quantity-entry.qty, updatedAt:now};
-        const res = await saveOneItem(updatedItem);
-        if (res) latestItems = res;
-        else latestItems = latestItems.map(i=>i.id===entry.itemId?updatedItem:i);
+        const newQty = it.quantity - entry.qty;
+        if (newQty <= 0) {
+          const res = await deleteOneItem(entry.itemId);
+          if (res) latestItems = res;
+          else latestItems = latestItems.filter(i=>i.id!==entry.itemId);
+        } else {
+          const updatedItem = {...it, quantity:newQty, updatedAt:now};
+          const res = await saveOneItem(updatedItem);
+          if (res) latestItems = res;
+          else latestItems = latestItems.map(i=>i.id===entry.itemId?updatedItem:i);
+        }
       }
     }
     saveItems(latestItems);
@@ -3719,11 +3726,27 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       note: note.trim(),
       soldBy: currentUser?.username||"Okänd",
       soldAt: Date.now(),
+      // Snapshot — gör att man kan se alla detaljer i säljloggen även efter delen tagits bort
+      itemSnapshot: {
+        name:item.name, oem:item.oem, sku:item.sku, side:item.side,
+        category:item.category, condition:item.condition, make:item.make,
+        model:item.model, location:item.location, locationType:item.locationType,
+        regNumber:item.regNumber, price:item.price, costPrice:item.costPrice,
+        notes:item.notes, supplier:item.supplier,
+      },
     };
-    const updatedItem = {...item, quantity:item.quantity-qty, updatedAt:Date.now()};
-    const updated = await saveOneItem(updatedItem);
-    if (updated) saveItems(updated);
-    else await saveItems(items.map(i=>i.id===item.id?updatedItem:i));
+    const newQty = item.quantity - qty;
+    if (newQty <= 0) {
+      // Antal noll → ta bort från lager (men säljloggen finns kvar)
+      const updated = await deleteOneItem(item.id);
+      if (updated) saveItems(updated);
+      else await saveItems(items.filter(i=>i.id!==item.id));
+    } else {
+      const updatedItem = {...item, quantity:newQty, updatedAt:Date.now()};
+      const updated = await saveOneItem(updatedItem);
+      if (updated) saveItems(updated);
+      else await saveItems(items.map(i=>i.id===item.id?updatedItem:i));
+    }
     await saveSales([saleEntry,...(sales||[])]);
     toast$(`Sålde ${qty} × ${item.name} — ${total.toLocaleString("sv-SE")} kr`,"success");
     push("receipt",{sale:saleEntry});
@@ -3827,9 +3850,20 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
   const [confirmReverse, setConfirmReverse] = useState(null);
   const all = sales||[];
 
+  const [saleDetail, setSaleDetail] = useState(null);
+
   const reverseSale = async (s) => {
-    const restored = items.map(i => i.id===s.itemId ? {...i, quantity:i.quantity+s.qty, updatedAt:Date.now()} : i);
-    await saveItems(restored);
+    const existing = items.find(i => i.id===s.itemId);
+    if (existing) {
+      const updatedItem = {...existing, quantity:existing.quantity+s.qty, updatedAt:Date.now()};
+      const updated = await saveOneItem(updatedItem);
+      if (updated) saveItems(updated);
+      else await saveItems(items.map(i=>i.id===s.itemId?updatedItem:i));
+    } else if (s.itemSnapshot) {
+      const restored = {...s.itemSnapshot, id:s.itemId, quantity:s.qty, updatedAt:Date.now()};
+      const updated = await saveOneItem(restored);
+      if (updated) saveItems(updated);
+    }
     await saveSales((sales||[]).filter(x=>x.id!==s.id));
     toast$("Försäljning ångrad — lagret återställt","success");
     setConfirmReverse(null);
@@ -3987,6 +4021,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
               </div>
               {s.note&&<div style={{marginTop:6,fontSize:12,color:TM,background:BG,borderRadius:5,padding:"5px 8px"}}>{s.note}</div>}
               <div style={{display:"flex",gap:8,marginTop:8,paddingTop:8,borderTop:`1px solid ${BD}50`}}>
+                <Btn variant="ghost" small onClick={()=>setSaleDetail(s)}><Icon name="circle-info"/> Detaljer</Btn>
                 <Btn variant="ghost" small onClick={()=>push("receipt",{sale:s})}><Icon name="receipt"/> Kvitto</Btn>
                 {(isAdmin||s.soldBy===currentUser?.username)&&(
                   <Btn variant="ghost" small onClick={()=>setConfirmReverse(s)} style={{color:R}}><Icon name="rotate-left"/> Ångra</Btn>
@@ -3997,6 +4032,63 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
         )}
         </>}
       </div>
+
+      {/* Säljdetaljer */}
+      {saleDetail&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setSaleDetail(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:0,maxWidth:380,width:"100%",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{background:B,color:WH,padding:"16px 18px",borderRadius:"14px 14px 0 0"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  {saleDetail.itemStockNumber&&<span style={{background:"rgba(255,255,255,.2)",borderRadius:4,padding:"1px 7px",fontSize:11,fontWeight:800}}>#{saleDetail.itemStockNumber}</span>}
+                  <div style={{fontWeight:800,fontSize:17,marginTop:4}}>{saleDetail.itemName}{saleDetail.itemSide?` — ${saleDetail.itemSide}`:""}</div>
+                </div>
+                <button onClick={()=>setSaleDetail(null)} style={{background:"none",border:"none",color:WH,fontSize:20,cursor:"pointer"}}>✕</button>
+              </div>
+            </div>
+            <div style={{padding:18}}>
+              {(() => {
+                const snap = saleDetail.itemSnapshot || {};
+                const rows = [
+                  ["Artikelnummer", snap.oem],
+                  ["Märke", snap.make ? `${snap.make}${snap.model?` ${snap.model}`:""}` : null],
+                  ["Skick", snap.condition],
+                  ["Kategori", snap.category],
+                  ["Placering", [snap.locationType,snap.location].filter(Boolean).join(" — ")],
+                  ["Reg.nr", snap.regNumber],
+                ].filter(([,v])=>v);
+                return rows.map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${BD}`,fontSize:13}}>
+                    <span style={{color:MU}}>{k}</span>
+                    <span style={{fontWeight:600,fontFamily:k==="Artikelnummer"?"monospace":"inherit"}}>{v}</span>
+                  </div>
+                ));
+              })()}
+              <div style={{marginTop:14,background:BG,borderRadius:8,padding:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",marginBottom:8}}>Försäljning</div>
+                {[
+                  ["Antal", `${saleDetail.qty} st`],
+                  ["Pris/st", `${saleDetail.unitPrice.toLocaleString("sv-SE")} kr`],
+                  saleDetail.discount>0?["Rabatt", `-${saleDetail.discount}%`]:null,
+                  ["Totalt", `${saleDetail.total.toLocaleString("sv-SE")} kr`],
+                  saleDetail.profit!=null?["Vinst", `${saleDetail.profit.toLocaleString("sv-SE")} kr`]:null,
+                  ["Kund", saleDetail.buyer],
+                  ["Säljare", saleDetail.soldBy],
+                  ["Datum", fmt(saleDetail.soldAt)],
+                  saleDetail.payMethod?["Betalning", fmtPay(saleDetail.payMethod)]:null,
+                ].filter(Boolean).map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13}}>
+                    <span style={{color:MU}}>{k}</span>
+                    <span style={{fontWeight:k==="Totalt"?800:600,color:k==="Totalt"?B:TX}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              {saleDetail.note&&<div style={{marginTop:12,fontSize:13,color:TM,background:AM+"10",borderRadius:8,padding:10}}>{saleDetail.note}</div>}
+              <Btn full variant="ghost" onClick={()=>{setSaleDetail(null);push("receipt",{sale:saleDetail});}} style={{marginTop:14}}><Icon name="receipt"/> Visa kvitto</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmReverse&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmReverse(null)}>
