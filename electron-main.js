@@ -106,6 +106,9 @@ function createWindow(url) {
   mainWindow.loadURL(url);
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
+  // Öppna DevTools för felsökning (ta bort senare)
+  mainWindow.webContents.openDevTools({ mode: "detach" });
+
   mainWindow.webContents.setWindowOpenHandler(({ url: u }) => {
     if (!u.startsWith(url)) { shell.openExternal(u); return { action: "deny" }; }
     return { action: "allow" };
