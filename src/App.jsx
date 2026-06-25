@@ -2340,33 +2340,46 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
       const data = JSON.parse(text);
       if (!data.items || !data.users) throw new Error("Ogiltig backup-fil");
 
-      // Skicka HELA backupen i ETT anrop — servern delar upp den snabbt lokalt
-      const res = await fetch(`${API}/restore`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: data.items,
-          sales: data.sales || [],
-          users: data.users || [],
-          settings: data.settings || null,
-          suppliers: data.suppliers || [],
-        }),
-      });
-      if (!res.ok) throw new Error(`Serverfel ${res.status}`);
-      const result = await res.json();
+      const allItems = data.items;
+      const BATCH = 40;  // små batchar så inget anrop avbryts
+      let finalItems = [];
 
-      // Uppdatera appen med den lätta listan
-      if (result.items) setItems(result.items);
+      for (let i = 0; i < allItems.length; i += BATCH) {
+        const batch = allItems.slice(i, i + BATCH);
+        const isFirst = i === 0;
+        const res = await fetch(`${API}/restore`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: batch,
+            first: isFirst,
+            // Skicka metadata bara i första batchen
+            sales: isFirst ? (data.sales || []) : null,
+            users: isFirst ? (data.users || []) : null,
+            settings: isFirst ? (data.settings || null) : null,
+            suppliers: isFirst ? (data.suppliers || []) : null,
+          }),
+        });
+        if (!res.ok) throw new Error(`Serverfel vid del ${i+1} (${res.status})`);
+        const result = await res.json();
+        finalItems = result.items;
+        // Visa framsteg
+        setRestoreProgress(Math.min(100, Math.round(((i + BATCH) / allItems.length) * 100)));
+      }
+
+      setItems(finalItems);
       if (data.sales) setSales?.(data.sales);
       if (data.settings) setSettings?.(data.settings);
       if (data.suppliers) setSuppliers?.(data.suppliers);
 
-      toast$(`Klart! ${result.count} delar återställda`,"success");
+      toast$(`Klart! ${finalItems.length} delar återställda`,"success");
     } catch(e) {
       toast$("Fel: "+e.message,"error");
     }
     setRestoring(false);
+    setRestoreProgress(0);
   };
+  const [restoreProgress, setRestoreProgress] = useState(0);
 
   const stats = [
     ["Artiklar",items?.length||0],
@@ -2402,7 +2415,7 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
           </div>
           <div onClick={()=>fileRef.current?.click()} style={{border:`2px dashed ${BD}`,borderRadius:10,padding:"30px 20px",textAlign:"center",cursor:"pointer",background:BG}}>
             <Icon name="rotate" style={{fontSize:28,color:MU,display:"block",margin:"0 auto 8px"}}/>
-            <div style={{fontSize:13,fontWeight:600,color:MU}}>{restoring?"Återställer...":"Klicka för att välja backup-fil (.json)"}</div>
+            <div style={{fontSize:13,fontWeight:600,color:MU}}>{restoring?`Återställer... ${restoreProgress}%`:"Klicka för att välja backup-fil (.json)"}</div>
           </div>
           <input ref={fileRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>doRestore(e.target.files[0])}/>
         </div>
