@@ -1,4 +1,26 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+
+// ── Error Boundary — fångar krascher och visar fel istället för vit skärm ─────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("App-krasch:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:24,textAlign:"center",fontFamily:"sans-serif",background:"#F5F5F7"}}>
+          <div style={{fontSize:48,marginBottom:16}}>⚠️</div>
+          <div style={{fontWeight:700,fontSize:18,color:"#141820",marginBottom:8}}>Något gick fel</div>
+          <div style={{fontSize:14,color:"#666",marginBottom:24,maxWidth:340}}>Appen stötte på ett problem. Tryck för att ladda om.</div>
+          <button onClick={()=>window.location.reload()} style={{background:"#1B3A6B",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+            Ladda om appen
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Storage — REST API mot lokal server ──────────────────────────────────────
 // Appen och API:et serveras från samma server (server.js på port 3000),
@@ -470,6 +492,10 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
 
 
 export default function App() {
+  return <ErrorBoundary><AppInner /></ErrorBoundary>;
+}
+
+function AppInner() {
   const [users, setUsers] = useState(null);
   const [items, setItems] = useState(null);
   const [session, setSession] = useState(() => loadSession());
