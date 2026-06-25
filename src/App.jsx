@@ -591,7 +591,10 @@ function AppInner() {
         const i = await sget("ow:items");
         if (i && Array.isArray(i)) {
           setItems(prev => {
-            // Snabb jämförelse: längd + senaste ändring, inte hela JSON
+            // SKYDD: skriv aldrig över befintliga delar med en tom lista
+            // (kan hända vid serverstörning) — om vi har data men servern
+            // returnerar tomt, behåll det vi har
+            if (i.length === 0 && prev.length > 0) return prev;
             if (prev.length !== i.length) return i;
             const prevStamp = prev.reduce((a,x)=>a+(x.updatedAt||0),0);
             const newStamp = i.reduce((a,x)=>a+(x.updatedAt||0),0);
