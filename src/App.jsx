@@ -2289,23 +2289,34 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
       const data = JSON.parse(text);
       if (!data.items || !data.users) throw new Error("Ogiltig backup-fil");
 
-      // Spara till servern och verifiera
-      const ok = await sset("ow:items", data.items);
-      if (!ok) throw new Error("Kunde inte spara till servern");
-      await saveItems(data.items);
+      // Komprimera/begränsa bilder så datan inte blir för stor.
+      // Behåll bara första bilden per del om de är stora.
+      const totalSize = JSON.stringify(data.items).length;
+      let cleanedItems = data.items;
+      if (totalSize > 30 * 1024 * 1024) {
+        // Över 30MB — behåll bara första bilden per del
+        cleanedItems = data.items.map(it => ({
+          ...it,
+          images: it.images?.length > 0 ? [it.images[0]] : [],
+        }));
+        toast$("Stora bilder begränsades för att rymmas","info");
+      }
+
+      const ok = await sset("ow:items", cleanedItems);
+      if (!ok) throw new Error("Datan är för stor — försök med färre bilder");
+      await saveItems(cleanedItems);
 
       if (data.sales) await saveSales(data.sales);
       if (data.users) await sset("ow:users", data.users);
       if (data.settings) await saveSettings(data.settings);
       if (data.suppliers) await saveSuppliers(data.suppliers);
 
-      // Verifiera mot servern
       const check = await sget("ow:items");
-      if (!check || check.length !== data.items.length) {
-        throw new Error(`Endast ${check?.length||0} av ${data.items.length} sparades`);
+      if (!check || check.length !== cleanedItems.length) {
+        throw new Error(`Endast ${check?.length||0} av ${cleanedItems.length} sparades`);
       }
 
-      toast$(`Klart! ${data.items.length} delar återställda`,"success");
+      toast$(`Klart! ${cleanedItems.length} delar återställda`,"success");
     } catch(e) {
       toast$("Fel: "+e.message,"error");
     }
@@ -3605,7 +3616,31 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     </div>
   ) : null;
 
-  const addImg = file => { if(!file) return; const r=new FileReader(); r.onload=e=>set("images",[...(f.images||[]),e.target.result]); r.readAsDataURL(file); };
+  // Komprimera bilden innan den sparas — minskar storleken drastiskt
+  const addImg = file => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Skala ner till max 1000px bredd, behåll proportioner
+        const maxW = 1000;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        // JPEG med 70% kvalitet — mycket mindre än original
+        const compressed = canvas.toDataURL("image/jpeg", 0.7);
+        set("images", [...(f.images || []), compressed]);
+      };
+      img.onerror = () => set("images", [...(f.images || []), e.target.result]);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
   const rmImg = i => set("images",f.images.filter((_,idx)=>idx!==i));
 
   const missing = [];
