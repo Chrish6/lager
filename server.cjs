@@ -194,18 +194,17 @@ app.post("/api/images/:id", (req, res) => {
   }
 });
 
-// ── SNABB BULK-RESTORE — tar emot hela backupen, delar upp på servern ─────────
+// ── SNABB BULK-RESTORE — tar emot backup i batchar, delar upp på servern ─────
 app.post("/api/restore", async (req, res) => {
   try {
     stats.requests++;
-    const { items = [], sales = [], users = [], settings = null, suppliers = [] } = req.body;
+    const { items = [], sales = null, users = null, settings = null, suppliers = [], mode = "replace", first = false } = req.body;
 
-    // SKYDD: vägra spara en tom lista — förhindrar att data raderas av misstag
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "Tom lista — återställning avbruten för att skydda data" });
+      return res.status(400).json({ error: "Tom batch" });
     }
 
-    // Dela upp items i lätt lista + bilder, allt på servern (snabbt, lokalt)
+    // Dela upp items i lätt lista + bilder
     const lightItems = [];
     const imageRows = [];
     for (const it of items) {
@@ -215,24 +214,31 @@ app.post("/api/restore", async (req, res) => {
       if (imgs.length > 0) imageRows.push([it.id, JSON.stringify(imgs)]);
     }
 
-    // Spara allt i EN transaktion — supersnabbt
+    // Hämta befintlig lista (för append), eller börja om (för first batch)
+    let existing = [];
+    if (!first) {
+      const row = await dbGet("ow:items");
+      existing = row ? JSON.parse(row.value) : [];
+    }
+    const combined = existing.concat(lightItems);
+
     await new Promise((resolve, reject) => {
       db.serialize(() => {
         db.run("BEGIN TRANSACTION");
-        db.run("DELETE FROM images");
+        if (first) db.run("DELETE FROM images");
         const stmt = db.prepare("INSERT OR REPLACE INTO images(item_id,data) VALUES(?,?)");
         for (const [id, data] of imageRows) stmt.run(id, data);
         stmt.finalize();
-        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:items',?,strftime('%s','now'))", [JSON.stringify(lightItems)]);
-        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:sales',?,strftime('%s','now'))", [JSON.stringify(sales)]);
-        if (users.length) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:users',?,strftime('%s','now'))", [JSON.stringify(users)]);
+        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:items',?,strftime('%s','now'))", [JSON.stringify(combined)]);
+        if (sales) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:sales',?,strftime('%s','now'))", [JSON.stringify(sales)]);
+        if (users) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:users',?,strftime('%s','now'))", [JSON.stringify(users)]);
         if (settings) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:settings',?,strftime('%s','now'))", [JSON.stringify(settings)]);
-        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:suppliers',?,strftime('%s','now'))", [JSON.stringify(suppliers)]);
+        if (suppliers && suppliers.length) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:suppliers',?,strftime('%s','now'))", [JSON.stringify(suppliers)]);
         db.run("COMMIT", (err) => err ? reject(err) : resolve());
       });
     });
 
-    res.json({ ok: true, count: lightItems.length, items: lightItems });
+    res.json({ ok: true, count: combined.length, items: combined });
   } catch (e) {
     stats.errors++;
     console.error("[FEL] restore:", e.message);
