@@ -6,6 +6,34 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // localhost eller via en IP-adress på nätverket.
 const API = "/api";
 
+// ── Universell utskrift — fungerar i Electron, webbläsare och mobil ───────────
+function printHtml(html) {
+  // Metod 1: dold iframe (fungerar bäst i Electron)
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      try { iframe.contentWindow.print(); } catch {}
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1000);
+    }, 500);
+    return true;
+  } catch {
+    // Metod 2: blob URL i ny flik
+    const blob = new Blob([html], {type:"text/html"});
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank");
+    if (!w) { const a=document.createElement("a"); a.href=url; a.download="utskrift.html"; a.click(); }
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+    return true;
+  }
+}
+
 async function sget(k) {
   try { const r = await fetch(`${API}/${k}`).then(r=>r.json()); return r ? JSON.parse(r.value) : null; } catch { return null; }
 }
@@ -732,14 +760,18 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     });
 
     // Deduct stock
-    let updatedItems = [...items];
+    // Uppdatera varje såld artikel individuellt mot servern
+    let latestItems = items;
     for (const entry of saleEntries) {
-      updatedItems = updatedItems.map(i =>
-        i.id===entry.itemId ? {...i, quantity: i.quantity-entry.qty, updatedAt:now} : i
-      );
+      const it = latestItems.find(i=>i.id===entry.itemId);
+      if (it) {
+        const updatedItem = {...it, quantity: it.quantity-entry.qty, updatedAt:now};
+        const res = await saveOneItem(updatedItem);
+        if (res) latestItems = res;
+        else latestItems = latestItems.map(i=>i.id===entry.itemId?updatedItem:i);
+      }
     }
-
-    await saveItems(updatedItems);
+    saveItems(latestItems);
     await saveSales([...saleEntries, ...(sales||[])]);
     clearCart();
 
@@ -1198,11 +1230,7 @@ function QrLabelsPage({ items, pop, preSelected }) {
     </head><body><div class="grid">${labelHtml}</div>
     <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script></body></html>`;
 
-    const blob = new Blob([html], {type:"text/html"});
-    const blobUrl = URL.createObjectURL(blob);
-    const w = window.open(blobUrl, "_blank");
-    if (!w) { const a=document.createElement("a"); a.href=blobUrl; a.download="etiketter.html"; a.click(); }
-    setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
+    printHtml(html);
   };
 
   return (
@@ -1324,11 +1352,7 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
       <div style="text-align:center;font-size:11px;color:#bbb;border-top:2px dashed #ccc;padding-top:14px;margin-top:14px">Tack för ditt köp!</div>
       <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
       </body></html>`;
-    const blob = new Blob([html], {type:"text/html"});
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl; a.target = "_blank"; a.click();
-    setTimeout(()=>URL.revokeObjectURL(blobUrl), 5000);
+    printHtml(html);
   };
 
   const totalDisc = rows.reduce((a,r)=>a+(r.discountKr||0)*r.qty,0);
@@ -2522,7 +2546,12 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
 
   const [confirmDel, setConfirmDel] = useState(null); // id to confirm
   const del = async id => { setConfirmDel(id); };
-  const confirmDelAction = async () => { await saveItems(items.filter(i=>i.id!==confirmDel)); toast$("Borttagen","success"); setConfirmDel(null); };
+  const confirmDelAction = async () => {
+    const updated = await deleteOneItem(confirmDel);
+    if (updated) saveItems(updated);
+    else await saveItems(items.filter(i=>i.id!==confirmDel));
+    toast$("Borttagen","success"); setConfirmDel(null);
+  };
 
   const exportCSV = () => {
     const hdr=["Artikelnummer","Namn","Sida","Kategori","OEM","Märke","Modell","Årsmodell","Reg.nr","Skick","Antal","Pris","Inköpspris","Leverantör","Placering"];
@@ -2877,7 +2906,9 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
   const [confirmDel, setConfirmDel] = useState(null);
 
   const del = async (id) => {
-    await saveItems(items.filter(i=>i.id!==id));
+    const updated = await deleteOneItem(id);
+    if (updated) saveItems(updated);
+    else await saveItems(items.filter(i=>i.id!==id));
     toast$("Borttagen","success");
     setConfirmDel(null);
     if(group.length<=1) pop();
@@ -3104,21 +3135,9 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
     ${item.notes?`<div style="margin-top:14px;background:#f5f5f7;border-radius:6px;padding:10px;font-size:12px">${item.notes}</div>`:""}
     <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script>
     </body></html>`;
-    // Använd Blob URL — fungerar i Electron och webbläsare
-    const blob = new Blob([html], {type:"text/html"});
-    const blobUrl = URL.createObjectURL(blob);
-    // Electron: öppna i nytt fönster via shell
-    if (window.electronAPI?.openExternal) {
-      window.electronAPI.openExternal(blobUrl);
-    } else {
-      const w = window.open(blobUrl, "_blank");
-      if (!w) {
-        // Popup blockerad — ladda ner filen istället
-        const a = document.createElement("a");
-        a.href = blobUrl; a.download = `${item.name}.html`; a.click();
-      }
-    }
-    setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
+    // Lägg till auto-print script och använd universell printHtml
+    const printableHtml = html.replace("</body>", "<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body>");
+    printHtml(printableHtml);
   };
 
   const shareLink = async () => {
@@ -3701,7 +3720,10 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       soldBy: currentUser?.username||"Okänd",
       soldAt: Date.now(),
     };
-    await saveItems(items.map(i=>i.id===item.id?{...i,quantity:i.quantity-qty,updatedAt:Date.now()}:i));
+    const updatedItem = {...item, quantity:item.quantity-qty, updatedAt:Date.now()};
+    const updated = await saveOneItem(updatedItem);
+    if (updated) saveItems(updated);
+    else await saveItems(items.map(i=>i.id===item.id?updatedItem:i));
     await saveSales([saleEntry,...(sales||[])]);
     toast$(`Sålde ${qty} × ${item.name} — ${total.toLocaleString("sv-SE")} kr`,"success");
     push("receipt",{sale:saleEntry});
