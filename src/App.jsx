@@ -597,6 +597,25 @@ function AppInner() {
       let st = await sget("ow:settings"); if (!st) { st={ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK" }; }
       let sup = await sget("ow:suppliers"); if (!sup) { sup=[]; }
       let fav = await sget("ow:favorites"); if (!fav) { fav=[]; }
+
+      // ── ENGÅNGS-MIGRERING ──────────────────────────────────────────────
+      // Om items fortfarande har inbäddade bilder (gammalt format), flytta
+      // ut dem till bildtabellen via /api/restore och gör listan lätt.
+      const hasEmbeddedImages = Array.isArray(i) && i.some(it => it.images && it.images.length > 0);
+      if (hasEmbeddedImages) {
+        try {
+          const res = await fetch(`${API}/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: i, sales: s, users: u, settings: st, suppliers: sup }),
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result.items) i = result.items; // nu lätt lista
+          }
+        } catch {}
+      }
+
       setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setLoaded(true);
 
       // Öppna direkt på artikeln om URL:en innehåller ?item=ID (delad länk)
@@ -622,15 +641,16 @@ function AppInner() {
       try {
         const i = await sget("ow:items");
         if (i && Array.isArray(i)) {
+          // Säkerhet: strippa eventuella inbäddade bilder så minnet hålls lågt
+          const light = i.some(it=>it.images?.length>0)
+            ? i.map(it => it.images?.length>0 ? {...it, images:[], hasImages:it.images.length} : it)
+            : i;
           setItems(prev => {
-            // SKYDD: skriv aldrig över befintliga delar med en tom lista
-            // (kan hända vid serverstörning) — om vi har data men servern
-            // returnerar tomt, behåll det vi har
-            if (i.length === 0 && prev.length > 0) return prev;
-            if (prev.length !== i.length) return i;
+            if (light.length === 0 && prev.length > 0) return prev;
+            if (prev.length !== light.length) return light;
             const prevStamp = prev.reduce((a,x)=>a+(x.updatedAt||0),0);
-            const newStamp = i.reduce((a,x)=>a+(x.updatedAt||0),0);
-            return prevStamp !== newStamp ? i : prev;
+            const newStamp = light.reduce((a,x)=>a+(x.updatedAt||0),0);
+            return prevStamp !== newStamp ? light : prev;
           });
         }
       } catch {}
