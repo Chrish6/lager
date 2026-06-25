@@ -53,6 +53,11 @@ db.serialize(() => {
     value TEXT,
     updated_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  // Separat tabell för bilder — en rad per artikel-id
+  db.run(`CREATE TABLE IF NOT EXISTS images (
+    item_id TEXT PRIMARY KEY,
+    data TEXT
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS request_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     method TEXT,
@@ -154,8 +159,73 @@ app.post("/api/item/delete", async (req, res) => {
     const items = row ? JSON.parse(row.value) : [];
     const filtered = items.filter(i => i.id !== id);
     await dbSet("ow:items", JSON.stringify(filtered));
+    // Ta bort eventuella bilder också
+    db.run("DELETE FROM images WHERE item_id=?", [id]);
     res.json({ ok: true, items: filtered });
   } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
+});
+
+// ── Bilder — hämta bilder för EN artikel ──────────────────────────────────────
+app.get("/api/images/:id", (req, res) => {
+  db.get("SELECT data FROM images WHERE item_id=?", [req.params.id], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ images: row ? JSON.parse(row.data) : [] });
+  });
+});
+
+// Spara bilder för EN artikel
+app.post("/api/images/:id", (req, res) => {
+  const imgs = req.body.images || [];
+  if (imgs.length === 0) {
+    db.run("DELETE FROM images WHERE item_id=?", [req.params.id], () => res.json({ ok: true }));
+  } else {
+    db.run("INSERT OR REPLACE INTO images(item_id,data) VALUES(?,?)",
+      [req.params.id, JSON.stringify(imgs)], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ ok: true });
+      });
+  }
+});
+
+// ── SNABB BULK-RESTORE — tar emot hela backupen, delar upp på servern ─────────
+app.post("/api/restore", async (req, res) => {
+  try {
+    stats.requests++;
+    const { items = [], sales = [], users = [], settings = null, suppliers = [] } = req.body;
+
+    // Dela upp items i lätt lista + bilder, allt på servern (snabbt, lokalt)
+    const lightItems = [];
+    const imageRows = [];
+    for (const it of items) {
+      const imgs = it.images || [];
+      const light = { ...it, images: [], hasImages: imgs.length };
+      lightItems.push(light);
+      if (imgs.length > 0) imageRows.push([it.id, JSON.stringify(imgs)]);
+    }
+
+    // Spara allt i EN transaktion — supersnabbt
+    await new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+        db.run("DELETE FROM images");
+        const stmt = db.prepare("INSERT OR REPLACE INTO images(item_id,data) VALUES(?,?)");
+        for (const [id, data] of imageRows) stmt.run(id, data);
+        stmt.finalize();
+        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:items',?,strftime('%s','now'))", [JSON.stringify(lightItems)]);
+        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:sales',?,strftime('%s','now'))", [JSON.stringify(sales)]);
+        if (users.length) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:users',?,strftime('%s','now'))", [JSON.stringify(users)]);
+        if (settings) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:settings',?,strftime('%s','now'))", [JSON.stringify(settings)]);
+        db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:suppliers',?,strftime('%s','now'))", [JSON.stringify(suppliers)]);
+        db.run("COMMIT", (err) => err ? reject(err) : resolve());
+      });
+    });
+
+    res.json({ ok: true, count: lightItems.length, items: lightItems });
+  } catch (e) {
+    stats.errors++;
+    console.error("[FEL] restore:", e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
