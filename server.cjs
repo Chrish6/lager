@@ -53,11 +53,14 @@ db.serialize(() => {
     value TEXT,
     updated_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
-  // Separat tabell för bilder — en rad per artikel-id
+  // Separat tabell för bilder — en rad per artikel-id.
+  // data = JSON-array av base64-bilder. updated_at för cache-busting.
   db.run(`CREATE TABLE IF NOT EXISTS images (
     item_id TEXT PRIMARY KEY,
-    data TEXT
+    data TEXT,
+    updated_at INTEGER DEFAULT (strftime('%s','now'))
   )`);
+  db.run("ALTER TABLE images ADD COLUMN updated_at INTEGER DEFAULT 0", () => {});
   db.run(`CREATE TABLE IF NOT EXISTS request_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     method TEXT,
@@ -186,11 +189,55 @@ app.post("/api/images/:id", (req, res) => {
   if (imgs.length === 0) {
     db.run("DELETE FROM images WHERE item_id=?", [req.params.id], () => res.json({ ok: true }));
   } else {
-    db.run("INSERT OR REPLACE INTO images(item_id,data) VALUES(?,?)",
+    db.run("INSERT OR REPLACE INTO images(item_id,data,updated_at) VALUES(?,?,strftime('%s','now'))",
       [req.params.id, JSON.stringify(imgs)], (err) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ ok: true });
       });
+  }
+});
+
+// ── Bild som CACHEBAR fil ─────────────────────────────────────────────────────
+// Serverar EN bild som riktiga bytes med lång cache. Webbläsaren cachar den och
+// hämtar den ALDRIG igen så länge URL:en är samma. URL:en innehåller ?v=<tid>
+// så den uppdateras automatiskt när bilden ändras (cache-busting).
+// /api/img/:id        → första bilden för artikeln
+// /api/img/:id/2      → tredje bilden (index 2), osv.
+app.get("/api/img/:id/:idx?", (req, res) => {
+  const idx = parseInt(req.params.idx || "0", 10) || 0;
+  db.get("SELECT data FROM images WHERE item_id=?", [req.params.id], (err, row) => {
+    if (err || !row) return res.status(404).end();
+    let imgs;
+    try { imgs = JSON.parse(row.data); } catch { return res.status(404).end(); }
+    const dataUrl = imgs[idx];
+    if (!dataUrl || typeof dataUrl !== "string") return res.status(404).end();
+    // dataUrl ser ut som "data:image/jpeg;base64,XXXX"
+    const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+    if (!m) return res.status(404).end();
+    const buf = Buffer.from(m[2], "base64");
+    res.set("Content-Type", m[1]);
+    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(buf);
+  });
+});
+
+// ── DELTA-SYNK ────────────────────────────────────────────────────────────────
+// Returnerar bara artiklar ändrade efter ?since=<tidsstämpel i ms>.
+// Klienten skickar sin senaste kända updatedAt och får bara det som ändrats.
+app.get("/api/delta", async (req, res) => {
+  try {
+    stats.requests++;
+    const since = Number(req.query.since) || 0;
+    const row = await dbGet("ow:items");
+    const items = row ? JSON.parse(row.value) : [];
+    // Hela listan av id:n (för att upptäcka borttagna), + ändrade artiklar
+    const changed = items.filter(i => (i.updatedAt || 0) > since);
+    const allIds = items.map(i => i.id);
+    const maxUpdatedAt = items.reduce((a, i) => Math.max(a, i.updatedAt || 0), 0);
+    res.json({ changed, allIds, maxUpdatedAt, total: items.length });
+  } catch (e) {
+    stats.errors++;
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -226,7 +273,7 @@ app.post("/api/restore", async (req, res) => {
       db.serialize(() => {
         db.run("BEGIN TRANSACTION");
         if (first) db.run("DELETE FROM images");
-        const stmt = db.prepare("INSERT OR REPLACE INTO images(item_id,data) VALUES(?,?)");
+        const stmt = db.prepare("INSERT OR REPLACE INTO images(item_id,data,updated_at) VALUES(?,?,strftime('%s','now'))");
         for (const [id, data] of imageRows) stmt.run(id, data);
         stmt.finalize();
         db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:items',?,strftime('%s','now'))", [JSON.stringify(combined)]);
