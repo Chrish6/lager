@@ -3039,7 +3039,7 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
   const location = [best.locationType, best.location].filter(Boolean).join(" ");
 
   return (
-    <div onClick={onOpen} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:10,height:"100%"}}>
+    <div onClick={onOpen} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden"}}>
 
       {/* Topp: bild + (lagernr-badges, namn, artikelnummer) */}
       <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
@@ -3209,7 +3209,7 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
   const imgSrc = item.thumb || item.images?.[0] || (item.hasImages>0 ? `/api/img/${item.id}?v=${item.updatedAt||0}` : null);
   return (
-    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:10,height:"100%"}}>
+    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden"}}>
 
       {/* Topp: bild + (lagernr, namn, artikelnummer) */}
       <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
@@ -3221,7 +3221,7 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
             {item.stockNumber&&<span style={{background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber}</span>}
           </div>
           <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
-          {item.oem&&<div style={{fontSize:15,fontWeight:800,color:TX,fontFamily:"monospace",letterSpacing:.3,marginTop:2,wordBreak:"break-all",lineHeight:1.15}}>{item.oem}</div>}
+          {item.oem&&<div style={{fontSize:15,fontWeight:800,color:TX,fontFamily:"monospace",letterSpacing:.3,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.15}}>{item.oem}</div>}
         </div>
       </div>
 
@@ -3233,9 +3233,9 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
         </div>
       )}
 
-      {/* Notering — om den finns */}
+      {/* Notering — om den finns (en rad) */}
       {item.notes&&(
-        <div style={{background:"#FFFBEB",border:`1px solid ${AM}35`,borderRadius:7,padding:"6px 9px",fontSize:11.5,color:TM,lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
+        <div style={{background:"#FFFBEB",border:`1px solid ${AM}35`,borderRadius:7,padding:"5px 9px",fontSize:11.5,color:TM,lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           <i className="fa-solid fa-note-sticky" style={{color:AM,marginRight:5}}/>{item.notes}
         </div>
       )}
@@ -4291,19 +4291,22 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
           </div>
         )}
 
-        {/* Sales list */}
+        {/* Sales list — virtualiserad */}
         {filtered.length===0?(
           <div style={{textAlign:"center",padding:40,color:MU,fontSize:14}}>Inga försäljningar hittades</div>
         ):(
-          filtered.map(s=>(
-            <div key={s.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:8}}>
+          <Virtuoso
+            style={{ height: "calc(100vh - 240px)" }}
+            data={filtered}
+            computeItemKey={(_, s) => s.id}
+            itemContent={(_, s) => (
+            <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                     {s.itemStockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>#{s.itemStockNumber}</span>}
                     <div style={{fontWeight:700,fontSize:14}}>{s.itemName}{s.itemSide?` — ${s.itemSide}`:""}</div>
                   </div>
-                  
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontWeight:800,fontSize:16,color:B}}>{s.total.toLocaleString("sv-SE")} kr</div>
@@ -4329,7 +4332,8 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
                 )}
               </div>
             </div>
-          ))
+            )}
+          />
         )}
         </>}
       </div>
