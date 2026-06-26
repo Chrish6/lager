@@ -244,10 +244,16 @@ function sendImage(req, res, idx) {
 app.post("/api/restore", async (req, res) => {
   try {
     stats.requests++;
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ error: "Ingen data mottogs (body tom)" });
+    }
     const { items = [], sales = null, users = null, settings = null, suppliers = [], mode = "replace", first = false } = req.body;
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "Tom batch" });
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: "items är inte en lista" });
+    }
+    if (items.length === 0) {
+      return res.status(400).json({ error: "Tom batch (0 delar mottogs)" });
     }
 
     // Dela upp items i lätt lista + bilder
@@ -326,6 +332,12 @@ app.post("/admin/api/restart", (req, res) => {
   setTimeout(() => process.exit(0), 500);
 });
 
+// Manuell trigger för automatisk backup (test)
+app.get("/admin/api/backup-now", async (req, res) => {
+  await runBackup();
+  res.json({ ok: true, message: "Backup skapad i backups-mappen" });
+});
+
 app.get("/admin", (req, res) => {
   res.send(`<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -364,6 +376,82 @@ load(); setInterval(load, 5000);
 app.get("/{*path}", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
+
+// ── AUTOMATISK BACKUP — varje fredag kl 22:00 ────────────────────────────────
+// Sparas i OneDrive så de synkas till molnet automatiskt
+const ONEDRIVE_DIR = "C:\\Users\\chris\\OneDrive\\Lager-backups";
+const LOCAL_BACKUP_DIR = path.join(__dirname, "backups");
+// Använd OneDrive om mappen går att skapa, annars lokal mapp som reserv
+function getBackupDir() {
+  try {
+    if (!fs.existsSync(ONEDRIVE_DIR)) fs.mkdirSync(ONEDRIVE_DIR, { recursive: true });
+    return ONEDRIVE_DIR;
+  } catch {
+    try { if (!fs.existsSync(LOCAL_BACKUP_DIR)) fs.mkdirSync(LOCAL_BACKUP_DIR); } catch {}
+    return LOCAL_BACKUP_DIR;
+  }
+}
+
+async function runBackup() {
+  try {
+    const [itemsRow, salesRow, usersRow, settingsRow, suppliersRow] = await Promise.all([
+      dbGet("ow:items"), dbGet("ow:sales"), dbGet("ow:users"), dbGet("ow:settings"), dbGet("ow:suppliers")
+    ]);
+    const items = itemsRow ? JSON.parse(itemsRow.value) : [];
+    // Samla ihop bilderna så backupen blir komplett
+    const itemsWithImages = [];
+    for (const it of items) {
+      if (it.hasImages > 0) {
+        const imgRow = await new Promise(r => db.get("SELECT data FROM images WHERE item_id=?", [it.id], (e,row)=>r(row)));
+        let imgs = []; try { imgs = imgRow ? JSON.parse(imgRow.data) : []; } catch {}
+        itemsWithImages.push({ ...it, images: imgs });
+      } else {
+        itemsWithImages.push(it);
+      }
+    }
+    const data = {
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      auto: true,
+      items: itemsWithImages,
+      sales: salesRow ? JSON.parse(salesRow.value) : [],
+      users: usersRow ? JSON.parse(usersRow.value) : [],
+      settings: settingsRow ? JSON.parse(settingsRow.value) : null,
+      suppliers: suppliersRow ? JSON.parse(suppliersRow.value) : [],
+    };
+    const stamp = new Date().toISOString().slice(0,10);
+    const BACKUP_DIR = getBackupDir();
+    const file = path.join(BACKUP_DIR, `auto_backup_${stamp}.json`);
+    fs.writeFileSync(file, JSON.stringify(data));
+    console.log(`[backup] Automatisk backup skapad: ${file} (${items.length} delar)`);
+
+    // Behåll bara de 8 senaste auto-backuperna
+    const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("auto_backup_")).sort();
+    while (files.length > 8) {
+      const old = files.shift();
+      try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch {}
+    }
+  } catch (e) {
+    console.error("[backup] Misslyckades:", e.message);
+  }
+}
+
+// Kontrollera varje minut om det är fredag 22:00
+let lastBackupKey = "";
+setInterval(() => {
+  const now = new Date();
+  // 5 = fredag (0=söndag). 22:00.
+  if (now.getDay() === 5 && now.getHours() === 22 && now.getMinutes() === 0) {
+    const key = now.toISOString().slice(0,13); // unik per timme — kör bara en gång
+    if (key !== lastBackupKey) {
+      lastBackupKey = key;
+      console.log("[backup] Fredag 22:00 — kör automatisk backup...");
+      runBackup();
+    }
+  }
+}, 60 * 1000);
+
+// Manuell trigger för test: GET /admin/api/backup-now (registreras före catch-all nedan)
 
 // ── Starta ────────────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
