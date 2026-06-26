@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, forwardRef } from "react";
+import { VirtuosoGrid, Virtuoso } from "react-virtuoso";
 
 // ── Error Boundary — fångar krascher och visar fel istället för vit skärm ─────
 class ErrorBoundary extends React.Component {
@@ -553,6 +554,7 @@ function AppInner() {
   const [items, setItems] = useState(null);
   const [session, setSession] = useState(() => loadSession());
   const [loaded, setLoaded] = useState(false);
+  const lastSyncRef = useRef(0);
   const [toast, setToast] = useState(null);
   const tRef = useRef();
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -619,6 +621,13 @@ function AppInner() {
       let sup = await sget("ow:suppliers"); if (!sup) { sup=[]; }
       let fav = await sget("ow:favorites"); if (!fav) { fav=[]; }
 
+      // Strippa ev. inbäddade bilder så listan hålls lätt och snabb
+      if (Array.isArray(i) && i.some(it=>it.images?.length>0)) {
+        i = i.map(it => it.images?.length>0 ? {...it, images:[], hasImages:it.images.length} : it);
+      }
+      // Sätt delta-synk-vattenmärket till senaste kända ändring
+      lastSyncRef.current = Array.isArray(i) ? i.reduce((a,it)=>Math.max(a,it.updatedAt||0),0) : 0;
+
       setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setLoaded(true);
 
       // Öppna direkt på artikeln om URL:en innehåller ?item=ID (delad länk)
@@ -637,25 +646,30 @@ function AppInner() {
   useEffect(() => { stackRef.current = stack; }, [stack]);
 
   useEffect(() => {
-    // EN enda interval för hela appens livstid — undviker minnesläcka
+    // EN enda interval — delta-synk: hämtar BARA ändrade artiklar, inte hela listan
     const id = setInterval(async () => {
       const onEditPage = stackRef.current.some(s => ["edit","sell","checkout","bulkedit","import"].includes(s.name));
       if (onEditPage) return;
       try {
-        const i = await sget("ow:items");
-        if (i && Array.isArray(i)) {
-          // Säkerhet: strippa eventuella inbäddade bilder så minnet hålls lågt
-          const light = i.some(it=>it.images?.length>0)
-            ? i.map(it => it.images?.length>0 ? {...it, images:[], hasImages:it.images.length} : it)
-            : i;
-          setItems(prev => {
-            if (light.length === 0 && prev.length > 0) return prev;
-            if (prev.length !== light.length) return light;
-            const prevStamp = prev.reduce((a,x)=>a+(x.updatedAt||0),0);
-            const newStamp = light.reduce((a,x)=>a+(x.updatedAt||0),0);
-            return prevStamp !== newStamp ? light : prev;
-          });
-        }
+        const r = await fetch(`${API}/delta?since=${lastSyncRef.current}`).then(r=>r.json());
+        if (!r || !Array.isArray(r.allIds)) return;
+        lastSyncRef.current = r.maxUpdatedAt || lastSyncRef.current;
+        setItems(prev => {
+          // Inga ändringar och samma antal → behåll exakt samma referens (ingen re-render)
+          if ((!r.changed || r.changed.length === 0) && prev.length === r.total) return prev;
+          // Bygg en map för snabb uppslagning
+          const map = new Map(prev.map(it => [it.id, it]));
+          // Applicera ändrade artiklar (strippa ev. bilder för att hålla minnet lågt)
+          for (const it of (r.changed || [])) {
+            const light = it.images?.length>0 ? {...it, images:[], hasImages:it.images.length} : it;
+            map.set(it.id, light);
+          }
+          // Ta bort artiklar som inte längre finns på servern
+          const serverIds = new Set(r.allIds);
+          for (const id of map.keys()) if (!serverIds.has(id)) map.delete(id);
+          // Bevara serverns ordning
+          return r.allIds.map(id => map.get(id)).filter(Boolean);
+        });
       } catch {}
     }, 10000);
     return () => clearInterval(id);
@@ -2633,6 +2647,19 @@ function LoginPage({ users, saveUsers, setSession, push, pop, toast$ }) {
   );
 }
 
+// ─── Virtuoso grid layout — responsiv kortgrid (definieras utanför komponenten
+// så den inte återskapas vid varje render) ────────────────────────────────────
+const gridComponents = {
+  List: forwardRef(({ style, children, ...props }, ref) => (
+    <div ref={ref} {...props} style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:10, ...style }}>
+      {children}
+    </div>
+  )),
+  Item: ({ children, ...props }) => (
+    <div {...props} style={{ minWidth:0 }}>{children}</div>
+  ),
+};
+
 // ─── Inventory Page ───────────────────────────────────────────────────────────
 function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, cart, addToCart }) {
   const [search, setSearch] = useState("");
@@ -2874,7 +2901,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           {(isAdmin||can("canImport")) && <button onClick={()=>push("import")} style={{background:"none",border:"none",color:B,fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4,marginLeft:can("canExport")?"0":"auto"}}><Icon name="file-export"/> Importera</button>}
         </div>
 
-        {/* Cards */}
+        {/* Cards — virtualiserad: bara synliga kort renderas (snabbt även med 1000+ delar) */}
         {viewMode==="cards" && (() => {
           // Group items by SKU — same SKU = variants of same part
           const groups = [];
@@ -2884,14 +2911,19 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             if (!seen[key]) { seen[key] = []; groups.push(seen[key]); }
             seen[key].push(item);
           });
+          if (filtered.length===0) return <div style={{textAlign:"center",padding:48,color:MU}}>Inga delar hittades</div>;
           return (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:10}}>
-              {filtered.length===0 && <div style={{textAlign:"center",padding:48,color:MU,gridColumn:"1/-1"}}>Inga delar hittades</div>}
-              {groups.map(group => {
+            <VirtuosoGrid
+              data={groups}
+              style={{ height: "calc(100vh - 230px)" }}
+              components={gridComponents}
+              computeItemKey={(_, group) => group.length===1 ? group[0].id : group[0].sku}
+              overscan={600}
+              itemContent={(_, group) => {
                 if (group.length === 1) {
                   const item = group[0];
                   return (
-                    <ItemCard key={item.id} item={item} can={can} isAdmin={isAdmin}
+                    <ItemCard item={item} can={can} isAdmin={isAdmin}
                       onDetail={()=>push("detail",{item})}
                       onEdit={()=>push("edit",{item})}
                       onSell={()=>push("sell",{item})}
@@ -2900,15 +2932,14 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                     />
                   );
                 }
-                // Multiple variants — show grouped card
                 return (
-                  <GroupCard key={group[0].sku} group={group} can={can}
+                  <GroupCard group={group} can={can}
                     onOpen={()=>push("variants",{sku:group[0].sku})}
                     onAddToCart={(item)=>{ addToCart(item); toast$(`${item.name} #${item.stockNumber||""} tillagd i korgen`,"success"); }}
                   />
                 );
-              })}
-            </div>
+              }}
+            />
           );
         })()}
 
@@ -2985,7 +3016,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
 }
 
 // ─── Group Card — shown when multiple items share same SKU ────────────────────
-function GroupCard({ group, can, onOpen }) {
+const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
   const best = [...group].sort((a,b) => {
     const s = i => i.condition==="Ny"?4:i.condition?.includes("Gott")?3:i.condition?.includes("spricka")?2:1;
     return s(b)-s(a);
@@ -3002,7 +3033,10 @@ function GroupCard({ group, can, onOpen }) {
       {/* Rad 1: bild + info */}
       <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
         <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {(best.thumb||best.images?.[0])?<img src={best.thumb||best.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<i className="fa-solid fa-wrench" style={{color:MU}}/>}
+          {(() => {
+            const src = best.thumb || best.images?.[0] || (best.hasImages>0 ? `/api/img/${best.id}?v=${best.updatedAt||0}` : null);
+            return src ? <img src={src} alt="" loading="lazy" decoding="async" width={40} height={40} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <i className="fa-solid fa-wrench" style={{color:MU}}/>;
+          })()}
         </div>
         <div style={{flex:1,minWidth:0}}>
           {/* Lagernummer — blå */}
@@ -3042,7 +3076,7 @@ function GroupCard({ group, can, onOpen }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Variants Page — choose between physical copies of same part ───────────────
 function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, toast$, saveItems }) {
@@ -3164,15 +3198,17 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
-function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
+const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
+  // Bildkälla: inbäddad thumbnail (snabbast) annars cachebar URL från servern
+  const imgSrc = item.thumb || item.images?.[0] || (item.hasImages>0 ? `/api/img/${item.id}?v=${item.updatedAt||0}` : null);
   return (
     <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:"10px 12px",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,position:"relative",minHeight:100}}>
 
       {/* Rad 1: lagernummer blå + namn */}
       <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
         <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
+          {imgSrc?<img src={imgSrc} alt="" loading="lazy" decoding="async" width={40} height={40} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
           {item.stockNumber&&<div style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,display:"inline-block",marginBottom:3,letterSpacing:.3}}>#{item.stockNumber}</div>}
@@ -3206,7 +3242,7 @@ function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, o
       </div>
     </div>
   );
-}
+});
 
 // ─── List Row ─────────────────────────────────────────────────────────────────
 function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
@@ -3239,37 +3275,15 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
-  const [loadedImages, setLoadedImages] = useState(null);
-  const [imgLoading, setImgLoading] = useState(false);
   const touchRef = useRef(null);
   const bilInfoUrl = item.regNumber ? `https://www.biluppgifter.se/fordon/${item.regNumber.replace(/\s/g,"")}` : null;
 
-  // Ladda bilder separat när sidan öppnas — robust med retry
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      // Bilder redan i objektet (precis sparade)
-      if (item.images?.length > 0) { setLoadedImages(item.images); return; }
-      // Inga bilder alls
-      if (!item.hasImages || item.hasImages === 0) { setLoadedImages([]); return; }
-      // Hämta fulla bilder, försök två gånger vid fel
-      setImgLoading(true);
-      let imgs = await getImages(item.id);
-      if ((!imgs || imgs.length === 0) && active) {
-        await new Promise(r => setTimeout(r, 600));
-        imgs = await getImages(item.id);
-      }
-      if (active) {
-        // Om hämtning misslyckades men vi har en thumbnail — visa den så länge
-        if ((!imgs || imgs.length === 0) && item.thumb) setLoadedImages([item.thumb]);
-        else setLoadedImages(imgs || []);
-        setImgLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [item.id]);
-
-  const imgs = loadedImages !== null ? loadedImages : (item.thumb ? [item.thumb] : []);
+  // Bygg cachebara bild-URL:er — webbläsaren cachar dem, hämtas aldrig om.
+  // En URL per bild: /api/img/<id>/<index>?v=<tid>
+  const count = item.images?.length > 0 ? item.images.length : (item.hasImages || 0);
+  const imgs = item.images?.length > 0
+    ? item.images  // precis sparade, redan i minnet
+    : Array.from({length: count}, (_, k) => `/api/img/${item.id}/${k}?v=${item.updatedAt||0}`);
 
   const handleTouchStart = e => { touchRef.current = e.touches[0].clientX; };
   const handleTouchEnd = e => {
