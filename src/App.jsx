@@ -3200,45 +3200,54 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 // ─── Item Card ────────────────────────────────────────────────────────────────
 const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
-  // Bildkälla: inbäddad thumbnail (snabbast) annars cachebar URL från servern
   const imgSrc = item.thumb || item.images?.[0] || (item.hasImages>0 ? `/api/img/${item.id}?v=${item.updatedAt||0}` : null);
   return (
-    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:"10px 12px",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,position:"relative",minHeight:100}}>
+    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:10,height:"100%"}}>
 
-      {/* Rad 1: lagernummer blå + namn */}
-      <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
-        <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-          {imgSrc?<img src={imgSrc} alt="" loading="lazy" decoding="async" width={40} height={40} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
+      {/* Topp: bild + (lagernr, namn, artikelnummer) */}
+      <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
+        <div style={{flexShrink:0,width:62,height:62,borderRadius:9,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {imgSrc?<img src={imgSrc} alt="" loading="lazy" decoding="async" width={62} height={62} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU,fontSize:18}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          {item.stockNumber&&<div style={{background:B,color:WH,borderRadius:5,padding:"1px 7px",fontSize:11,fontWeight:800,display:"inline-block",marginBottom:3,letterSpacing:.3}}>#{item.stockNumber}</div>}
-          <div style={{fontWeight:700,fontSize:13,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
-          {item.make&&<div style={{fontSize:10,color:MU}}>{item.make}{item.model?` ${item.model}`:""}</div>}
-          {item.oem&&<div style={{fontSize:11,fontWeight:700,color:TX,fontFamily:"monospace"}}>{item.oem}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+            {item.stockNumber&&<span style={{background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber}</span>}
+          </div>
+          <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
+          {item.oem&&<div style={{fontSize:15,fontWeight:800,color:TX,fontFamily:"monospace",letterSpacing:.3,marginTop:2,wordBreak:"break-all",lineHeight:1.15}}>{item.oem}</div>}
         </div>
       </div>
 
-      {/* Antal — nere till höger */}
-      <div style={{position:"absolute",bottom:10,right:12,textAlign:"right"}}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR,lineHeight:1}}>{item.quantity}</div>
-        <div style={{fontSize:9,color:MU}}>st</div>
-      </div>
-
-      {/* Placering — större */}
+      {/* Placering — stor och tydlig */}
       {location&&(
-        <div style={{display:"flex",alignItems:"center",gap:5,background:B+"08",borderRadius:6,padding:"4px 8px"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B}}/>
-          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6,background:B+"0A",borderRadius:7,padding:"6px 10px"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B}}/>
+          <span style={{fontSize:15,fontWeight:800,color:B}}>{location}</span>
         </div>
       )}
 
-      {/* Pris + knappar */}
-      <div style={{display:"flex",alignItems:"center",gap:5,paddingRight:60}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:800,color:B,marginRight:"auto"}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
-        {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
-        {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
-        {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
-        {can("canDelete")&&<Btn variant="ghost" small onClick={onDelete} style={{color:R}}><Icon name="trash"/></Btn>}
+      {/* Notering — om den finns */}
+      {item.notes&&(
+        <div style={{background:"#FFFBEB",border:`1px solid ${AM}35`,borderRadius:7,padding:"6px 9px",fontSize:11.5,color:TM,lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
+          <i className="fa-solid fa-note-sticky" style={{color:AM,marginRight:5}}/>{item.notes}
+        </div>
+      )}
+
+      {/* Botten: pris + antal + knappar */}
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
+        </div>
+        <div style={{textAlign:"right",lineHeight:1,marginLeft:"auto"}}>
+          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR}}>{item.quantity}</span>
+          <span style={{fontSize:10,color:MU,marginLeft:2}}>st</span>
+        </div>
+        <div style={{display:"flex",gap:4}}>
+          {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
+          {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
+          {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
+          {can("canDelete")&&<Btn variant="ghost" small onClick={onDelete} style={{color:R}}><Icon name="trash"/></Btn>}
+        </div>
       </div>
     </div>
   );
@@ -3386,59 +3395,86 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
         </div>
       )}
 
-        {/* Gallery — visas bara om bilder finns */}
-        {imgs.length>0 && (
-          <div style={{marginBottom:16}}>
-            <div style={{borderRadius:12,overflow:"hidden",background:BG,aspectRatio:"4/3",position:"relative",userSelect:"none"}}
-              onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-              <img src={imgs[idx]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} />
-              <div style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,.45)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600}}>{idx+1}/{imgs.length}</div>
-              {imgs.length>1&&<>
-                <button onClick={()=>setIdx(i=>Math.max(0,i-1))} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18}}>‹</button>
-                <button onClick={()=>setIdx(i=>Math.min(imgs.length-1,i+1))} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18}}>›</button>
-              </>}
+        {/* ÖVERSIKT — bild till vänster (begränsad storlek), viktig info till höger */}
+        <div className="detail-hero" style={{display:"flex",gap:18,marginBottom:18,flexWrap:"wrap",alignItems:"flex-start"}}>
+
+          {/* Bild — begränsad maxbredd så den inte tar hela skärmen */}
+          {imgs.length>0 && (
+            <div style={{flex:"1 1 320px",maxWidth:420,minWidth:260}}>
+              <div style={{borderRadius:12,overflow:"hidden",background:BG,aspectRatio:"4/3",position:"relative",userSelect:"none"}}
+                onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                <img src={imgs[idx]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} />
+                <div style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,.45)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600}}>{idx+1}/{imgs.length}</div>
+                {imgs.length>1&&<>
+                  <button onClick={()=>setIdx(i=>Math.max(0,i-1))} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>‹</button>
+                  <button onClick={()=>setIdx(i=>Math.min(imgs.length-1,i+1))} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>›</button>
+                </>}
+              </div>
+              {imgs.length>1&&(
+                <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:2}}>
+                  {imgs.map((img,i)=><img key={i} src={img} alt="" loading="lazy" onClick={()=>setIdx(i)} style={{width:52,height:52,objectFit:"cover",borderRadius:7,border:`2.5px solid ${idx===i?B:BD}`,cursor:"pointer",flexShrink:0}}/>)}
+                </div>
+              )}
             </div>
-            {imgs.length>1&&(
-              <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:2}}>
-                {imgs.map((img,i)=><img key={i} src={img} alt="" onClick={()=>setIdx(i)} style={{width:56,height:56,objectFit:"cover",borderRadius:7,border:`2.5px solid ${idx===i?B:BD}`,cursor:"pointer",flexShrink:0}}/>)}
+          )}
+
+          {/* Viktig info till höger om bilden */}
+          <div style={{flex:"1 1 300px",minWidth:260,display:"flex",flexDirection:"column",gap:12}}>
+
+            {/* Lagernummer — stor */}
+            {item.stockNumber&&(
+              <div style={{background:B,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Lagernummer</div>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:40,fontWeight:800,color:WH,letterSpacing:2,lineHeight:1}}>#{item.stockNumber}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <button onClick={()=>copyText(item.stockNumber).then(()=>toast$("Lagernummer kopierat","success"))}
+                    style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"7px 11px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+                    <i className="fa-solid fa-copy"/> Kopiera
+                  </button>
+                  <button onClick={()=>push("qrlabels",{preSelected:[item.id]})}
+                    style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"7px 11px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+                    <i className="fa-solid fa-tag"/> Etikett
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Artikelnummer — stort och tydligt */}
+            {item.oem&&(
+              <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Artikelnummer (OEM)</div>
+                  <div style={{fontFamily:"monospace",fontSize:22,fontWeight:800,color:TX,wordBreak:"break-all",lineHeight:1.1}}>{item.oem}</div>
+                </div>
+                <button onClick={()=>copyText(item.oem).then(()=>toast$("Artikelnummer kopierat","success"))}
+                  style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,padding:"7px 12px",color:B,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                  <i className="fa-solid fa-copy"/>
+                </button>
+              </div>
+            )}
+
+            {/* Placering — stor och tydlig */}
+            {[item.locationType, item.location].filter(Boolean).length>0&&(
+              <div style={{background:B+"0A",borderRadius:10,border:`1px solid ${B}22`,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                <i className="fa-solid fa-location-dot" style={{fontSize:20,color:B}}/>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:1}}>Placering</div>
+                  <div style={{fontSize:20,fontWeight:800,color:B,lineHeight:1.1}}>{[item.locationType, item.location].filter(Boolean).join(" — ")}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Notering — högt upp så den syns direkt */}
+            {item.notes&&(
+              <div style={{background:"#FFFBEB",border:`1px solid ${AM}40`,borderRadius:10,padding:"10px 14px",fontSize:13,color:TM,lineHeight:1.5}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#9A6B00",textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Notering</div>
+                {item.notes}
               </div>
             )}
           </div>
-        )}
-
-        {/* Lagernummer — stor badge med kopieringsknapp */}
-        {item.stockNumber&&(
-          <div style={{background:B,borderRadius:10,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Lagernummer</div>
-              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:800,color:WH,letterSpacing:2,lineHeight:1}}>#{item.stockNumber}</div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>copyText(item.stockNumber).then(()=>toast$("Lagernummer kopierat","success"))}
-                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                <i className="fa-solid fa-copy"/> Kopiera
-              </button>
-              <button onClick={()=>push("qrlabels",{preSelected:[item.id]})}
-                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"8px 12px",color:WH,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                <i className="fa-solid fa-tag"/> Etikett
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Artikelnummer — kopieringsknapp */}
-        {item.oem&&(
-          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Artikelnummer (OEM)</div>
-              <div style={{fontFamily:"monospace",fontSize:16,fontWeight:700,color:TX}}>{item.oem}</div>
-            </div>
-            <button onClick={()=>copyText(item.oem).then(()=>toast$("Artikelnummer kopierat","success"))}
-              style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,padding:"7px 12px",color:B,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
-              <i className="fa-solid fa-copy"/> Kopiera
-            </button>
-          </div>
-        )}
+        </div>
 
         {/* Flera exemplar — länk till variantsidan */}
         {(() => {
@@ -3529,11 +3565,6 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
           </button>
         </div>
 
-        {item.notes&&(
-          <div style={{background:"#FFFBEB",border:`1px solid ${AM}30`,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:TM,lineHeight:1.6}}>
-            <strong>Notering:</strong> {item.notes}
-          </div>
-        )}
       </div>
     </Page>
   );
