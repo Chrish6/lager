@@ -1419,6 +1419,8 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
   const rows = receiptRows || [sale];
   const co = settings||{};
   const grandTotal = rows.reduce((a,r)=>a+r.total,0);
+  const grandExclVat = rows.reduce((a,r)=>a+(r.totalExclVat!=null?r.totalExclVat:Math.round(r.total/1.25)),0);
+  const grandVat = grandTotal - grandExclVat;
   const buyer = rows[0]?.buyer || "Okänd";
   const soldBy = rows[0]?.soldBy || "";
   const soldAt = rows[0]?.soldAt || Date.now();
@@ -1524,6 +1526,12 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
                 <span>Total rabatt</span><span>-{totalDisc.toLocaleString("sv-SE")} kr</span>
               </div>
             )}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:TM,marginBottom:3}}>
+              <span>Summa exkl. moms</span><span>{grandExclVat.toLocaleString("sv-SE")} kr</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:TM,marginBottom:6}}>
+              <span>Moms (25%)</span><span>{grandVat.toLocaleString("sv-SE")} kr</span>
+            </div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:20,fontWeight:800,color:B,marginBottom:8}}>
               <span>TOTALT</span><span>{grandTotal.toLocaleString("sv-SE")} kr</span>
             </div>
@@ -1675,6 +1683,9 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
           item.stockNumber = nextFreeStock(new Set([...existingStockNumbers, ...usedInBatch]));
         }
         usedInBatch.add(item.stockNumber);
+
+        // Artikelnummer alltid versaler
+        if (item.oem) item.oem = item.oem.toUpperCase().trim();
 
         // SKU genereras automatiskt från artikelnumret — gör att flera rader med
         // samma artikelnummer (t.ex. tre likadana strålkastare) automatiskt grupperas
@@ -3028,50 +3039,46 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
   const location = [best.locationType, best.location].filter(Boolean).join(" ");
 
   return (
-    <div onClick={onOpen} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:"10px 12px",cursor:"pointer",display:"flex",flexDirection:"column",gap:6,position:"relative",minHeight:100}}>
+    <div onClick={onOpen} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:10,height:"100%"}}>
 
-      {/* Rad 1: bild + info */}
-      <div style={{display:"flex",gap:8,alignItems:"flex-start",paddingRight:60}}>
-        <div style={{flexShrink:0,width:40,height:40,borderRadius:7,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
+      {/* Topp: bild + (lagernr-badges, namn, artikelnummer) */}
+      <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
+        <div style={{flexShrink:0,width:62,height:62,borderRadius:9,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
           {(() => {
             const src = best.thumb || best.images?.[0] || (best.hasImages>0 ? `/api/img/${best.id}?v=${best.updatedAt||0}` : null);
-            return src ? <img src={src} alt="" loading="lazy" decoding="async" width={40} height={40} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <i className="fa-solid fa-wrench" style={{color:MU}}/>;
+            return src ? <img src={src} alt="" loading="lazy" decoding="async" width={62} height={62} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <i className="fa-solid fa-wrench" style={{color:MU,fontSize:18}}/>;
           })()}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          {/* Lagernummer — blå */}
-          <div style={{display:"flex",gap:3,marginBottom:2,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:4,marginBottom:3,flexWrap:"wrap"}}>
             {group.map(item=>(
-              <span key={item.id} style={{background:B,color:WH,borderRadius:5,padding:"1px 6px",fontSize:11,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
+              <span key={item.id} style={{background:B,color:WH,borderRadius:5,padding:"2px 7px",fontSize:12,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
             ))}
           </div>
-          <div style={{fontWeight:700,fontSize:13,lineHeight:1.2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
-          {best.make&&<div style={{fontSize:10,color:MU}}>{best.make}{brandGroup?<span style={{color:B,marginLeft:3,fontWeight:600}}>({brandGroup})</span>:null}</div>}
-          {best.oem&&<div style={{fontSize:11,fontWeight:700,color:TX,fontFamily:"monospace"}}>{best.oem}</div>}
+          <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
+          {best.oem&&<div style={{fontSize:15,fontWeight:800,color:TX,fontFamily:"monospace",letterSpacing:.3,marginTop:2,wordBreak:"break-all",lineHeight:1.15}}>{best.oem}</div>}
         </div>
       </div>
 
-      {/* Antal — nere till höger */}
-      <div style={{position:"absolute",bottom:10,right:12,textAlign:"right"}}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR,lineHeight:1}}>{totalQty}</div>
-        <div style={{fontSize:9,color:MU}}>st</div>
-      </div>
-
-      {/* Placering — större */}
+      {/* Placering — stor och tydlig */}
       {location&&(
-        <div style={{display:"flex",alignItems:"center",gap:5,background:B+"08",borderRadius:6,padding:"4px 8px"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:11,color:B}}/>
-          <span style={{fontSize:12,fontWeight:700,color:B}}>{location}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6,background:B+"0A",borderRadius:7,padding:"6px 10px"}}>
+          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B}}/>
+          <span style={{fontSize:15,fontWeight:800,color:B}}>{location}</span>
         </div>
       )}
 
-      {/* Pris + exemplar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:60}}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:800,color:B}}>
+      {/* Botten: pris + antal + exemplar-länk */}
+      <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:"auto"}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1}}>
           {prices.length===0?"—":minP===maxP?`${minP.toLocaleString("sv-SE")} kr`:`${minP.toLocaleString("sv-SE")}–${maxP.toLocaleString("sv-SE")} kr`}
         </div>
-        <div style={{fontSize:11,color:B,fontWeight:600,display:"flex",alignItems:"center",gap:3}}>
-          {group.length} exemplar <i className="fa-solid fa-chevron-right" style={{fontSize:10}}/>
+        <div style={{textAlign:"right",lineHeight:1,marginLeft:"auto"}}>
+          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR}}>{totalQty}</span>
+          <span style={{fontSize:10,color:MU,marginLeft:2}}>st</span>
+        </div>
+        <div style={{fontSize:11,color:B,fontWeight:700,display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
+          {group.length} ex <i className="fa-solid fa-chevron-right" style={{fontSize:10}}/>
         </div>
       </div>
     </div>
@@ -3802,7 +3809,7 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     await setImages(id, imgs);
     // Skapa en liten thumbnail för kortet (några KB, håller listan snabb)
     const thumb = imgs.length > 0 ? await makeThumbnail(imgs[0]) : null;
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
+    const payload = { ...f, id, oem: (f.oem||'').toUpperCase().trim(), sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
 
     const updated = await saveOneItem(payload);
     if (updated) { saveItems(updated); toast$(f.id?"Uppdaterad":"Tillagd","success"); }
@@ -3824,7 +3831,7 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
     const imgs = f.images || [];
     await setImages(id, imgs);
     const thumb = imgs.length > 0 ? await makeThumbnail(imgs[0]) : null;
-    const payload = { ...f, id, sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
+    const payload = { ...f, id, oem: (f.oem||'').toUpperCase().trim(), sku: autoSku, make: normalizedMake, updatedAt: Date.now(), images: [], hasImages: imgs.length, thumb };
 
     const updated = await saveOneItem(payload);
     const newList = updated || (f.id ? items.map(i=>i.id===f.id?payload:i) : [...items,payload]);
@@ -3854,7 +3861,7 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
                 style={{width:"100%",border:`1.5px solid ${!f.name?.trim()?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:14,fontWeight:600,color:WH,background:"rgba(255,255,255,.12)"}}/>
             </div>
             <div style={{display:"flex",gap:8}}>
-              <input type="text" value={f.oem} onChange={e=>set("oem",e.target.value)} placeholder="Artikelnummer *"
+              <input type="text" value={f.oem} onChange={e=>set("oem",e.target.value.toUpperCase())} placeholder="Artikelnummer *"
                 style={{flex:1,border:`1.5px solid ${(!f.oem?.trim()||dupOem)?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.12)"}}/>
               <input type="text" value={f.stockNumber||""} onChange={e=>set("stockNumber",e.target.value)} placeholder="Lagernr *"
                 style={{width:100,border:`1.5px solid ${(!f.stockNumber?.trim()||dupStockNumber)?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:800,color:WH,background:"rgba(255,255,255,.12)",textAlign:"center"}}/>
@@ -3946,14 +3953,27 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
   const [discountPct, setDiscountPct] = useState(0);
   const [discountKr, setDiscountKr] = useState(0);
   const [note, setNote] = useState("");
+  const VAT_RATE = 0.25; // 25% moms
+  // Anger om priset man skriver in är inkl. eller exkl. moms
+  const [priceMode, setPriceMode] = useState("incl"); // "incl" | "excl"
 
   // Pris efter rabatt, baserat på vald rabatt-typ ovanpå det manuellt satta unitPrice
   const finalPrice = discountMode === "pct"
     ? Math.round(unitPrice * (1 - discountPct/100))
     : Math.max(0, unitPrice - discountKr);
   const effectiveDiscountPct = unitPrice>0 ? Math.round((1 - finalPrice/unitPrice)*100) : 0;
-  const total = qty * finalPrice;
-  const profit = qty * (finalPrice - (item.costPrice||0));
+
+  // Moms-beräkning: priset man satt är antingen inkl eller exkl moms,
+  // det andra räknas ut automatiskt.
+  const priceInclVat = priceMode === "incl" ? finalPrice : Math.round(finalPrice * (1 + VAT_RATE));
+  const priceExclVat = priceMode === "incl" ? Math.round(finalPrice / (1 + VAT_RATE)) : finalPrice;
+  const vatPerUnit = priceInclVat - priceExclVat;
+
+  // Totalsumman baseras på pris INKL moms (det kunden faktiskt betalar)
+  const total = qty * priceInclVat;
+  const totalExclVat = qty * priceExclVat;
+  const totalVat = qty * vatPerUnit;
+  const profit = qty * (priceExclVat - (item.costPrice||0)); // vinst räknas exkl moms
   const priceChanged = unitPrice !== item.price;
 
   const resetPrice = () => { setUnitPrice(item.price); setDiscountPct(0); setDiscountKr(0); };
@@ -3969,7 +3989,14 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       itemStockNumber: item.stockNumber||"",
       itemSide: item.side||"",
       qty,
-      unitPrice: finalPrice,
+      unitPrice: priceInclVat,
+      priceInclVat,
+      priceExclVat,
+      vatPerUnit,
+      vatRate: VAT_RATE,
+      totalExclVat,
+      totalVat,
+      priceMode,
       originalPrice: item.price,
       manualPrice: priceChanged ? unitPrice : null,
       discount: effectiveDiscountPct,
@@ -4038,6 +4065,20 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
             </div>
           </div>
 
+          {/* Moms — välj om priset är inkl eller exkl moms, det andra räknas ut */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+              <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Moms (25%)</label>
+              <div style={{display:"flex",gap:4,background:BG,borderRadius:6,padding:2}}>
+                <button onClick={()=>setPriceMode("incl")} style={{padding:"3px 12px",borderRadius:5,border:"none",background:priceMode==="incl"?WH:"transparent",color:priceMode==="incl"?B:MU,fontSize:11,fontWeight:700,boxShadow:priceMode==="incl"?SH:"none",cursor:"pointer"}}>Inkl. moms</button>
+                <button onClick={()=>setPriceMode("excl")} style={{padding:"3px 12px",borderRadius:5,border:"none",background:priceMode==="excl"?WH:"transparent",color:priceMode==="excl"?B:MU,fontSize:11,fontWeight:700,boxShadow:priceMode==="excl"?SH:"none",cursor:"pointer"}}>Exkl. moms</button>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:MU}}>
+              Priset du skrev in tolkas som <strong style={{color:B}}>{priceMode==="incl"?"inkl. moms":"exkl. moms"}</strong> — det andra räknas ut automatiskt nedan.
+            </div>
+          </div>
+
           {/* Rabatt toggle: % eller kr */}
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
@@ -4078,14 +4119,19 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
                 <span>-{discountMode==="pct"?`${discountPct}%`:`${discountKr.toLocaleString("sv-SE")} kr`}</span>
               </div>
             )}
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{fontSize:13,color:TM}}>{qty} st × {finalPrice.toLocaleString("sv-SE")} kr</span>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:TM,marginBottom:3}}>
+              <span>{qty} st × {priceExclVat.toLocaleString("sv-SE")} kr (exkl. moms)</span>
+              <span>{totalExclVat.toLocaleString("sv-SE")} kr</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:TM,marginBottom:6,paddingBottom:6,borderBottom:`1px solid ${B}20`}}>
+              <span>Moms (25%)</span>
+              <span>{totalVat.toLocaleString("sv-SE")} kr</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-              <span style={{fontSize:13,fontWeight:700,color:TX}}>Totalt</span>
-              <span style={{fontSize:20,fontWeight:800,color:B}}>{total.toLocaleString("sv-SE")} kr</span>
+              <span style={{fontSize:13,fontWeight:700,color:TX}}>Totalt (inkl. moms)</span>
+              <span style={{fontSize:22,fontWeight:800,color:B}}>{total.toLocaleString("sv-SE")} kr</span>
             </div>
-            {item.costPrice>0&&<div style={{marginTop:4,fontSize:12,color:profit>=0?GR:R,fontWeight:600}}>Vinst: {profit.toLocaleString("sv-SE")} kr</div>}
+            {item.costPrice>0&&<div style={{marginTop:6,fontSize:12,color:profit>=0?GR:R,fontWeight:600}}>Vinst (exkl. moms): {profit.toLocaleString("sv-SE")} kr</div>}
           </div>
         )}
 
