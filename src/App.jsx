@@ -2385,7 +2385,11 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
             suppliers: isFirst ? (data.suppliers || []) : null,
           }),
         });
-        if (!res.ok) throw new Error(`Serverfel vid del ${i+1} (${res.status})`);
+        if (!res.ok) {
+          let reason = "";
+          try { const err = await res.json(); reason = err.error || ""; } catch {}
+          throw new Error(`Del ${i+1}: ${reason || `serverfel ${res.status}`}`);
+        }
         const result = await res.json();
         finalItems = result.items;
         // Visa framsteg
@@ -4011,8 +4015,8 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       // Snapshot — gör att man kan se alla detaljer i säljloggen även efter delen tagits bort
       itemSnapshot: {
         name:item.name, oem:item.oem, sku:item.sku, side:item.side,
-        category:item.category, condition:item.condition, make:item.make,
-        model:item.model, location:item.location, locationType:item.locationType,
+        stockNumber:item.stockNumber, category:item.category, condition:item.condition,
+        make:item.make, model:item.model, location:item.location, locationType:item.locationType,
         regNumber:item.regNumber, price:item.price, costPrice:item.costPrice,
         notes:item.notes, supplier:item.supplier,
       },
@@ -4156,17 +4160,43 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
   const reverseSale = async (s) => {
     const existing = items.find(i => i.id===s.itemId);
     if (existing) {
+      // Delen finns kvar — lägg bara tillbaka antalet
       const updatedItem = {...existing, quantity:existing.quantity+s.qty, updatedAt:Date.now()};
       const updated = await saveOneItem(updatedItem);
       if (updated) saveItems(updated);
       else await saveItems(items.map(i=>i.id===s.itemId?updatedItem:i));
-    } else if (s.itemSnapshot) {
-      const restored = {...s.itemSnapshot, id:s.itemId, quantity:s.qty, updatedAt:Date.now()};
+    } else {
+      // Delen är borttagen — återskapa den helt från snapshot eller säljdata
+      const snap = s.itemSnapshot || {};
+      const restored = {
+        id: s.itemId || genId("item"),
+        name: snap.name || s.itemName || "Återställd del",
+        oem: snap.oem || "",
+        sku: snap.sku || s.itemSku || "",
+        side: snap.side || s.itemSide || "",
+        stockNumber: snap.stockNumber || s.itemStockNumber || "",
+        category: snap.category || "Övrigt",
+        condition: snap.condition || "Begagnad - Gott skick",
+        make: snap.make || "",
+        model: snap.model || "",
+        location: snap.location || "",
+        locationType: snap.locationType || "",
+        regNumber: snap.regNumber || "",
+        price: snap.price != null ? snap.price : (s.originalPrice || 0),
+        costPrice: snap.costPrice || s.costPrice || 0,
+        notes: snap.notes || "",
+        supplier: snap.supplier || "",
+        quantity: s.qty || 1,
+        images: [],
+        hasImages: 0,
+        updatedAt: Date.now(),
+      };
       const updated = await saveOneItem(restored);
       if (updated) saveItems(updated);
+      else await saveItems([...items, restored]);
     }
     await saveSales((sales||[]).filter(x=>x.id!==s.id));
-    toast$("Försäljning ångrad — lagret återställt","success");
+    toast$("Försäljning ångrad — delen är tillbaka i lagret","success");
     setConfirmReverse(null);
   };
 
