@@ -106,6 +106,24 @@ app.get("/api/network", (req, res) => {
   res.json({ ips, port: PORT });
 });
 
+// ── DELTA-SYNK — måste ligga FÖRE /api/:key så den inte fångas av den ─────────
+// Returnerar bara artiklar ändrade efter ?since=<tidsstämpel i ms>.
+app.get("/api/delta", async (req, res) => {
+  try {
+    stats.requests++;
+    const since = Number(req.query.since) || 0;
+    const row = await dbGet("ow:items");
+    const items = row ? JSON.parse(row.value) : [];
+    const changed = items.filter(i => (i.updatedAt || 0) > since);
+    const allIds = items.map(i => i.id);
+    const maxUpdatedAt = items.reduce((a, i) => Math.max(a, i.updatedAt || 0), 0);
+    res.json({ changed, allIds, maxUpdatedAt, total: items.length });
+  } catch (e) {
+    stats.errors++;
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/:key", async (req, res) => {
   try {
     stats.requests++;
@@ -202,16 +220,17 @@ app.post("/api/images/:id", (req, res) => {
 // hämtar den ALDRIG igen så länge URL:en är samma. URL:en innehåller ?v=<tid>
 // så den uppdateras automatiskt när bilden ändras (cache-busting).
 // /api/img/:id        → första bilden för artikeln
-// /api/img/:id/2      → tredje bilden (index 2), osv.
-app.get("/api/img/:id/:idx?", (req, res) => {
-  const idx = parseInt(req.params.idx || "0", 10) || 0;
+// /api/img/:id/:idx   → bild med visst index
+app.get("/api/img/:id", (req, res) => sendImage(req, res, 0));
+app.get("/api/img/:id/:idx", (req, res) => sendImage(req, res, parseInt(req.params.idx || "0", 10) || 0));
+
+function sendImage(req, res, idx) {
   db.get("SELECT data FROM images WHERE item_id=?", [req.params.id], (err, row) => {
     if (err || !row) return res.status(404).end();
     let imgs;
     try { imgs = JSON.parse(row.data); } catch { return res.status(404).end(); }
     const dataUrl = imgs[idx];
     if (!dataUrl || typeof dataUrl !== "string") return res.status(404).end();
-    // dataUrl ser ut som "data:image/jpeg;base64,XXXX"
     const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
     if (!m) return res.status(404).end();
     const buf = Buffer.from(m[2], "base64");
@@ -219,27 +238,7 @@ app.get("/api/img/:id/:idx?", (req, res) => {
     res.set("Cache-Control", "public, max-age=31536000, immutable");
     res.send(buf);
   });
-});
-
-// ── DELTA-SYNK ────────────────────────────────────────────────────────────────
-// Returnerar bara artiklar ändrade efter ?since=<tidsstämpel i ms>.
-// Klienten skickar sin senaste kända updatedAt och får bara det som ändrats.
-app.get("/api/delta", async (req, res) => {
-  try {
-    stats.requests++;
-    const since = Number(req.query.since) || 0;
-    const row = await dbGet("ow:items");
-    const items = row ? JSON.parse(row.value) : [];
-    // Hela listan av id:n (för att upptäcka borttagna), + ändrade artiklar
-    const changed = items.filter(i => (i.updatedAt || 0) > since);
-    const allIds = items.map(i => i.id);
-    const maxUpdatedAt = items.reduce((a, i) => Math.max(a, i.updatedAt || 0), 0);
-    res.json({ changed, allIds, maxUpdatedAt, total: items.length });
-  } catch (e) {
-    stats.errors++;
-    res.status(500).json({ error: e.message });
-  }
-});
+}
 
 // ── SNABB BULK-RESTORE — tar emot backup i batchar, delar upp på servern ─────
 app.post("/api/restore", async (req, res) => {
