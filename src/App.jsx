@@ -3027,32 +3027,6 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           </div>
         </div>
 
-        {/* Snabbfilter — knappar för vanliga filter */}
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-          {[
-            { key:"low", label:"Lågt lager", icon:"triangle-exclamation", active:filters.low, toggle:()=>setFilters({...filters, low:!filters.low}) },
-            { key:"reserved", label:"Reserverade", icon:"bookmark", active:filters.reserved, toggle:()=>setFilters({...filters, reserved:!filters.reserved}) },
-            { key:"noImage", label:"Utan bild", icon:"image", active:filters.noImage, toggle:()=>setFilters({...filters, noImage:!filters.noImage}) },
-          ].map(qf=>(
-            <button key={qf.key} onClick={qf.toggle}
-              style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",borderRadius:16,border:`1.5px solid ${qf.active?B:BD}`,background:qf.active?B:WH,color:qf.active?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer",boxShadow:SH}}>
-              <i className={`fa-solid fa-${qf.icon}`} style={{fontSize:11}}/> {qf.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Lagernummer- och artikelnummer-filter (flera med komma) */}
-        <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:140,position:"relative"}}>
-            <input value={filters.stockNums} onChange={e=>setFilters({...filters, stockNums:e.target.value})} placeholder="Lagernr (t.ex. 11, 15, 23)"
-              style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${filters.stockNums?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box",background:filters.stockNums?B+"08":WH}}/>
-          </div>
-          <div style={{flex:1,minWidth:140,position:"relative"}}>
-            <input value={filters.artNums} onChange={e=>setFilters({...filters, artNums:e.target.value.toUpperCase()})} placeholder="Artikelnr (flera med ,)"
-              style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${filters.artNums?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box",background:filters.artNums?B+"08":WH,fontFamily:"monospace"}}/>
-          </div>
-        </div>
-
         {/* Aktiva filter som taggar med ✕ + Rensa allt */}
         {(activeCount>0 || search) && (
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
@@ -4103,7 +4077,13 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
 
   const condColors = {"Ny":GR,"Begagnad - Gott skick":B,"Begagnad - Liten spricka":AM,"Begagnad - Kräver lackering":AM,"Reservdelar / Skrotning":R};
 
+  const parseList = (str) => (str||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   const matchCount = items.filter(i => {
+    const sn = parseList(f.stockNums), an = parseList(f.artNums);
+    if (sn.length && !sn.includes((i.stockNumber||"").toLowerCase())) return false;
+    if (an.length && !an.includes((i.oem||"").toLowerCase())) return false;
+    if (f.reserved && !(i.reservations?.length>0)) return false;
+    if (f.noImage && (i.hasImages>0 || i.images?.length>0 || i.thumb)) return false;
     if (f.cats.length&&!f.cats.includes(i.category)) return false;
     if (f.conds.length&&!f.conds.includes(i.condition)) return false;
     if (f.sides.length&&!f.sides.includes(i.side)) return false;
@@ -4141,7 +4121,7 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
 
   const apply = () => { setFilters(f); pop(); };
   const clear = () => {
-    const empty={cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""};
+    const empty={cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:"",stockNums:"",artNums:"",reserved:false,noImage:false};
     setF(empty); setFilters(empty);
   };
 
@@ -4152,6 +4132,25 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
       <TopBar title="Filter" onBack={pop} right={right} />
       <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"0 14px 20px"}}>
         <div style={{fontSize:13,color:MU,padding:"12px 0"}}>Matchar <strong style={{color:TX}}>{matchCount}</strong> av {items.length} delar</div>
+
+        {/* Lagernummer & artikelnummer — flera med komma */}
+        <Section label="Lagernummer" value={f.stockNums?"aktivt":""} />
+        <input value={f.stockNums||""} onChange={e=>set("stockNums",e.target.value)} placeholder="t.ex. 11, 15, 23"
+          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.stockNums?B:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.stockNums?B+"08":WH}}/>
+        <div style={{fontSize:11,color:MU,marginTop:4}}>Visa bara delar med dessa lagernummer (flera separeras med komma).</div>
+
+        <Section label="Artikelnummer" value={f.artNums?"aktivt":""} />
+        <input value={f.artNums||""} onChange={e=>set("artNums",e.target.value.toUpperCase())} placeholder="t.ex. 8K0945095, 4G8867409"
+          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.artNums?B:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.artNums?B+"08":WH,fontFamily:"monospace"}}/>
+        <div style={{fontSize:11,color:MU,marginTop:4}}>Visa bara delar med dessa artikelnummer (flera separeras med komma).</div>
+
+        {/* Snabbval */}
+        <Section label="Snabbval" value={[f.low,f.reserved,f.noImage].filter(Boolean).length?`${[f.low,f.reserved,f.noImage].filter(Boolean).length} valda`:""} />
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <Chip label="Lågt lager" active={!!f.low} color={R} onClick={()=>set("low",!f.low)}/>
+          <Chip label="Reserverade" active={!!f.reserved} color={AM} onClick={()=>set("reserved",!f.reserved)}/>
+          <Chip label="Utan bild" active={!!f.noImage} onClick={()=>set("noImage",!f.noImage)}/>
+        </div>
 
         {/* Kategori — chips */}
         <Section label="Kategori" value={f.cats.length?`${f.cats.length} valda`:""} />
