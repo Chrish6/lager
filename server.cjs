@@ -193,6 +193,74 @@ app.post("/api/item/delete", async (req, res) => {
   } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
 });
 
+// ── REDIGERINGSLÅS ────────────────────────────────────────────────────────────
+// Hålls i minnet (snabbt, ingen databas-overhead). Map: itemId → {user, action, ts}
+// action: "edit" (redigerar) | "cart" (ligger i kassan)
+const LOCK_TIMEOUT_MS = 20 * 60 * 1000; // 20 minuter
+const locks = new Map();
+// Vem väntar på en del: itemId → { user, ts } (för att meddela första användaren)
+const waiting = new Map();
+
+function lockInfo(itemId) {
+  const lock = locks.get(itemId);
+  if (!lock) return null;
+  const age = Date.now() - lock.ts;
+  if (age > LOCK_TIMEOUT_MS) { locks.delete(itemId); return null; } // utgånget lås
+  return { ...lock, remainingMs: LOCK_TIMEOUT_MS - age };
+}
+
+// Försök ta ett lås. Returnerar {ok:true} eller {ok:false, lock:{...}} om upptaget.
+app.post("/api/lock/acquire", (req, res) => {
+  const { itemId, user, action } = req.body || {};
+  if (!itemId || !user) return res.status(400).json({ error: "itemId och user krävs" });
+  const existing = lockInfo(itemId);
+  if (existing && existing.user !== user) {
+    // Upptaget av någon annan — registrera att denna user väntar
+    waiting.set(itemId, { user, ts: Date.now() });
+    return res.json({
+      ok: false,
+      lockedBy: existing.user,
+      action: existing.action,
+      remainingMs: existing.remainingMs,
+    });
+  }
+  // Ledigt eller redan mitt eget lås — ta/förnya det
+  locks.set(itemId, { user, action: action || "edit", ts: Date.now() });
+  res.json({ ok: true });
+});
+
+// Släpp ett lås (när man sparar/går ut)
+app.post("/api/lock/release", (req, res) => {
+  const { itemId, user } = req.body || {};
+  const lock = locks.get(itemId);
+  if (lock && lock.user === user) locks.delete(itemId);
+  waiting.delete(itemId);
+  res.json({ ok: true });
+});
+
+// Förnya lås (håll det vid liv medan man jobbar) + kolla om någon väntar
+app.post("/api/lock/heartbeat", (req, res) => {
+  const { itemId, user } = req.body || {};
+  const lock = locks.get(itemId);
+  if (lock && lock.user === user) {
+    lock.ts = Date.now();
+    const w = waiting.get(itemId);
+    return res.json({ ok: true, waitingUser: w && w.user !== user ? w.user : null });
+  }
+  res.json({ ok: false }); // låset är inte längre mitt
+});
+
+// Kolla låsstatus för en eller flera delar
+app.post("/api/lock/status", (req, res) => {
+  const ids = req.body.ids || [];
+  const result = {};
+  for (const id of ids) {
+    const info = lockInfo(id);
+    if (info) result[id] = { user: info.user, action: info.action, remainingMs: info.remainingMs };
+  }
+  res.json({ locks: result });
+});
+
 // ── Bilder — hämta bilder för EN artikel ──────────────────────────────────────
 app.get("/api/images/:id", (req, res) => {
   db.get("SELECT data FROM images WHERE item_id=?", [req.params.id], (err, row) => {
@@ -384,12 +452,118 @@ const LOCAL_BACKUP_DIR = path.join(__dirname, "backups");
 // Använd OneDrive om mappen går att skapa, annars lokal mapp som reserv
 function getBackupDir() {
   try {
-    if (!fs.existsSync(ONEDRIVE_DIR)) fs.mkdirSync(ONEDRIVE_DIR, { recursive: true });
+    if (!fs.existsSync(ONEDRIVE_DIR)) {
+      fs.mkdirSync(ONEDRIVE_DIR, { recursive: true });
+      console.log(`[backup] Skapade OneDrive-mapp: ${ONEDRIVE_DIR}`);
+    }
+    // Testa att vi faktiskt kan skriva där
+    fs.accessSync(ONEDRIVE_DIR, fs.constants.W_OK);
     return ONEDRIVE_DIR;
-  } catch {
+  } catch (e) {
+    console.error(`[backup] Kunde inte använda OneDrive (${e.message}) — använder lokal mapp`);
     try { if (!fs.existsSync(LOCAL_BACKUP_DIR)) fs.mkdirSync(LOCAL_BACKUP_DIR); } catch {}
     return LOCAL_BACKUP_DIR;
   }
+}
+
+// ── Excel-backup — välorganiserad fil med två flikar ─────────────────────────
+async function writeExcelBackup(filePath, items, sales) {
+  const ExcelJS = require("exceljs");
+  const wb = new ExcelJS.Workbook();
+  const BLUE = "FF1B3A6B", LIGHT = "FFEEF2F8", WHITE = "FFFFFFFF";
+
+  const styleHeader = (ws, n) => {
+    const row = ws.getRow(1);
+    for (let c = 1; c <= n; c++) {
+      const cell = row.getCell(c);
+      cell.font = { name: "Arial", bold: true, color: { argb: WHITE }, size: 11 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    }
+    row.height = 26;
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+  };
+  const zebra = (ws, nrows, ncols) => {
+    for (let r = 2; r <= nrows; r++) {
+      const row = ws.getRow(r);
+      for (let c = 1; c <= ncols; c++) row.getCell(c).font = { name: "Arial", size: 10 };
+      if (r % 2 === 0) for (let c = 1; c <= ncols; c++)
+        row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: LIGHT } };
+    }
+  };
+
+  // ── Flik 1: Lager ──
+  const ws = wb.addWorksheet("Lager");
+  ws.columns = [
+    { header: "Lagernummer", width: 13 },
+    { header: "Artikelnummer", width: 16 },
+    { header: "Namn", width: 18 },
+    { header: "Sida", width: 10 },
+    { header: "Märke", width: 12 },
+    { header: "Modell", width: 10 },
+    { header: "Årsmodell", width: 13 },
+    { header: "Kategori", width: 13 },
+    { header: "Skick", width: 22 },
+    { header: "Antal", width: 8 },
+    { header: "Pris (kr)", width: 11 },
+    { header: "Inköpspris (kr)", width: 14 },
+    { header: "Placering", width: 14 },
+    { header: "Reg.nr", width: 10 },
+    { header: "Leverantör", width: 14 },
+    { header: "Notering", width: 28 },
+  ];
+  const sorted = [...items].sort((a,b)=>(parseInt(a.stockNumber||"0")||0)-(parseInt(b.stockNumber||"0")||0));
+  for (const it of sorted) {
+    const arsmodell = [it.yearFrom, it.yearTo].filter(Boolean).join("–");
+    const placering = [it.locationType, it.location].filter(Boolean).join(" ");
+    ws.addRow([
+      it.stockNumber||"", it.oem||"", it.name||"", it.side||"", it.make||"", it.model||"",
+      arsmodell, it.category||"", it.condition||"", it.quantity||0, it.price||0, it.costPrice||0,
+      placering, it.regNumber||"", it.supplier||"", it.notes||"",
+    ]);
+  }
+  styleHeader(ws, 16);
+  zebra(ws, sorted.length+1, 16);
+  [1,10,11,12].forEach(c => ws.getColumn(c).alignment = { horizontal: "center" });
+
+  // ── Flik 2: Säljlogg ──
+  const ws2 = wb.addWorksheet("Säljlogg");
+  ws2.columns = [
+    { header: "Datum", width: 17 },
+    { header: "Lagernummer", width: 13 },
+    { header: "Artikelnummer", width: 16 },
+    { header: "Namn", width: 18 },
+    { header: "Sida", width: 10 },
+    { header: "Antal", width: 7 },
+    { header: "Pris exkl. moms (kr)", width: 18 },
+    { header: "Moms (kr)", width: 11 },
+    { header: "Pris inkl. moms (kr)", width: 18 },
+    { header: "Total (kr)", width: 11 },
+    { header: "Inköpspris (kr)", width: 14 },
+    { header: "Vinst (kr)", width: 11 },
+    { header: "Kund", width: 18 },
+    { header: "Säljare", width: 12 },
+    { header: "Betalning", width: 12 },
+    { header: "Notering", width: 20 },
+  ];
+  const sortedSales = [...(sales||[])].sort((a,b)=>(b.soldAt||0)-(a.soldAt||0));
+  for (const s of sortedSales) {
+    const d = s.soldAt ? new Date(s.soldAt) : null;
+    const datum = d ? `${d.toISOString().slice(0,10)} ${d.toTimeString().slice(0,5)}` : "";
+    const exVat = s.priceExclVat!=null ? s.priceExclVat : Math.round((s.unitPrice||0)/1.25);
+    const vat = s.vatPerUnit!=null ? s.vatPerUnit : ((s.unitPrice||0)-exVat);
+    const snap = s.itemSnapshot || {};
+    ws2.addRow([
+      datum, s.itemStockNumber||snap.stockNumber||"", snap.oem||"", s.itemName||"", s.itemSide||"",
+      s.qty||0, exVat, vat, s.unitPrice||0, s.total||0, s.costPrice||snap.costPrice||0,
+      s.profit!=null?s.profit:"", s.buyer||"", s.soldBy||"", s.payMethod||"", s.note||"",
+    ]);
+  }
+  styleHeader(ws2, 16);
+  zebra(ws2, sortedSales.length+1, 16);
+  [2,6,7,8,9,10,11,12].forEach(c => ws2.getColumn(c).alignment = { horizontal: "center" });
+
+  await wb.xlsx.writeFile(filePath);
 }
 
 async function runBackup() {
@@ -423,13 +597,23 @@ async function runBackup() {
     const BACKUP_DIR = getBackupDir();
     const file = path.join(BACKUP_DIR, `auto_backup_${stamp}.json`);
     fs.writeFileSync(file, JSON.stringify(data));
-    console.log(`[backup] Automatisk backup skapad: ${file} (${items.length} delar)`);
+    console.log(`[backup] JSON-backup skapad: ${file} (${items.length} delar)`);
 
-    // Behåll bara de 8 senaste auto-backuperna
-    const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("auto_backup_")).sort();
-    while (files.length > 8) {
-      const old = files.shift();
-      try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch {}
+    // ── Excel-backup (välorganiserad, två flikar) ──
+    try {
+      await writeExcelBackup(path.join(BACKUP_DIR, `auto_backup_${stamp}.xlsx`), items, data.sales);
+      console.log(`[backup] Excel-backup skapad`);
+    } catch (e) {
+      console.error("[backup] Excel misslyckades:", e.message);
+    }
+
+    // Behåll bara de 8 senaste auto-backuperna (både .json och .xlsx)
+    for (const ext of ["json", "xlsx"]) {
+      const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("auto_backup_") && f.endsWith(ext)).sort();
+      while (files.length > 8) {
+        const old = files.shift();
+        try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch {}
+      }
     }
   } catch (e) {
     console.error("[backup] Misslyckades:", e.message);

@@ -68,7 +68,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "bonjour-service": "^1.2.1",
-    "react-virtuoso": "^4.18.7"
+    "react-virtuoso": "^4.18.7",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
