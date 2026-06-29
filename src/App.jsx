@@ -443,6 +443,18 @@ function Sel({ label, value, onChange, options }) {
   );
 }
 
+// Liten tagg för aktiva filter, med ✕ för att ta bort
+function FilterTag({ label, onRemove }) {
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 6px 5px 11px",borderRadius:16,background:B+"12",border:`1px solid ${B}30`,color:B,fontSize:12,fontWeight:600,maxWidth:200}}>
+      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
+      <button onClick={onRemove} style={{background:B+"20",border:"none",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:B,flexShrink:0,padding:0}}>
+        <i className="fa-solid fa-xmark" style={{fontSize:10}}/>
+      </button>
+    </span>
+  );
+}
+
 function Field({ label, value, half }) {
   if (!value && value!==0) return null;
   return (
@@ -654,7 +666,9 @@ function AppInner() {
   };
 
   const [viewMode, setViewMode] = useState("cards");
-  const [filters, setFilters] = useState({ cats:[], conds:[], sides:[], make:"", brandGroup:"", locationType:"", model:"", yearMin:"", yearMax:"", priceMin:"", priceMax:"", low:false, supplier:"" });
+  const [filters, setFilters] = useState({ cats:[], conds:[], sides:[], make:"", brandGroup:"", locationType:"", model:"", yearMin:"", yearMax:"", priceMin:"", priceMax:"", low:false, supplier:"", stockNums:"", artNums:"", reserved:false, noImage:false });
+  const [search, setSearch] = useState("");
+  const [sortPref, setSortPref] = useState({ by:"stockNumber", dir:"asc" });
   const applyFilters = useCallback(f => setFilters(f), []);
   // page stack: each entry = { name, props }
   const [stack, setStack] = useState([{ name:"inventory" }]);
@@ -828,7 +842,7 @@ function AppInner() {
     return !!currentUser.permissions?.[p];
   };
 
-  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, setItems, setSales, setSettings, setSuppliers };
+  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -2804,22 +2818,33 @@ const gridComponents = {
 };
 
 // ─── Inventory Page ───────────────────────────────────────────────────────────
-function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, cart, addToCart }) {
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("stockNumber");
-  const [sortDir, setSortDir] = useState("asc");
+function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, cart, addToCart }) {
   const [showSort, setShowSort] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const setFilters = applyFilters;
+  const sortBy = sortPref.by, sortDir = sortPref.dir;
+  const setSortBy = (v) => setSortPref(p=>({...p,by:v}));
+  const setSortDir = (v) => setSortPref(p=>({...p,dir:v}));
 
   if (!can("canView")) return <Page><TopBar title="Lager" /><div style={{padding:40,textAlign:"center",color:R,fontWeight:600}}>Åtkomst nekad.</div></Page>;
 
-  const activeCount = [filters.cats.length,filters.conds.length,filters.sides.length,filters.make,filters.brandGroup,filters.locationType,filters.model,filters.yearMin,filters.yearMax,filters.priceMin,filters.priceMax,filters.low,filters.supplier].filter(Boolean).length;
+  // Hjälpare: tolka kommaseparerade nummer ("11, 15, 23") till en lista
+  const parseList = (str) => (str||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const stockNumList = parseList(filters.stockNums);
+  const artNumList = parseList(filters.artNums);
+
+  const activeCount = [filters.cats.length,filters.conds.length,filters.sides.length,filters.make,filters.brandGroup,filters.locationType,filters.model,filters.yearMin,filters.yearMax,filters.priceMin,filters.priceMax,filters.low,filters.supplier,filters.stockNums,filters.artNums,filters.reserved,filters.noImage].filter(Boolean).length;
 
   let filtered = items.filter(i => {
     const q = search.toLowerCase();
     const m = !q || [i.name,i.sku,i.category,i.oem,i.compatible,i.side,i.supplier,i.location,i.make,i.model,i.regNumber,i.stockNumber,getBrandGroup(i.make)].some(f=>f?.toLowerCase().includes(q));
     if (!m) return false;
+    // Lagernummer-filter: exakt match mot någon i listan
+    if (stockNumList.length && !stockNumList.includes((i.stockNumber||"").toLowerCase())) return false;
+    // Artikelnummer-filter: exakt match mot någon i listan
+    if (artNumList.length && !artNumList.includes((i.oem||"").toLowerCase())) return false;
+    if (filters.reserved && !(i.reservations?.length>0)) return false;
+    if (filters.noImage && (i.hasImages>0 || i.images?.length>0 || i.thumb)) return false;
     if (filters.cats.length && !filters.cats.includes(i.category)) return false;
     if (filters.conds.length && !filters.conds.includes(i.condition)) return false;
     if (filters.sides.length && !filters.sides.includes(i.side)) return false;
@@ -2923,17 +2948,20 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             {/* Menu items */}
             {[
               {icon:"house",         label:"Lager",          route:"inventory",   show:true},
+              {icon:"cart-shopping", label:"Kassa",          route:"checkout",    show:isAdmin||can("canUseCheckout")},
               {icon:"chart-line",    label:"Dashboard",      route:"dashboard",   show:isAdmin||can("canViewDashboard")},
               {icon:"chart-line",    label:"Rapporter",      route:"reports",     show:isAdmin||can("canViewReports")},
               {icon:"list",          label:"Säljlogg",       route:"saleslog",    show:isAdmin||can("canViewLog")},
-              {icon:"file-export",   label:"Importera",      route:"import",      show:isAdmin||can("canAdd")},
-              {icon:"pen",           label:"Massredigera",   route:"bulkedit",    show:isAdmin},
+              {icon:"bookmark",      label:"Reservationer",  route:"reservations",show:isAdmin||can("canViewReservations")},
+              {icon:"qrcode",        label:"Skanna",         route:"scan",        show:isAdmin||can("canScan")},
+              {icon:"file-import",   label:"Importera",      route:"import",      show:isAdmin||can("canImport")},
+              {icon:"layer-group",   label:"Massredigera",   route:"bulkedit",    show:isAdmin||can("canBulkEdit")},
               {icon:"qrcode",        label:"Etiketter",       route:"qrlabels",    show:isAdmin},
               {icon:"location-dot",   label:"Platser",         route:"locationview", show:(isAdmin||can("canView"))},
-              {icon:"truck",         label:"Leverantörer",   route:"suppliers",   show:isAdmin},
-              {icon:"users",         label:"Användare",      route:"users",       show:isAdmin},
-              {icon:"rotate",        label:"Backup",         route:"backup",      show:isAdmin},
-              {icon:"sliders",       label:"Inställningar",  route:"settings",    show:isAdmin},
+              {icon:"truck",         label:"Leverantörer",   route:"suppliers",   show:isAdmin||can("canManageSuppliers")},
+              {icon:"users",         label:"Användare",      route:"users",       show:isAdmin||can("canManageUsers")},
+              {icon:"rotate",        label:"Backup",         route:"backup",      show:isAdmin||can("canBackup")},
+              {icon:"sliders",       label:"Inställningar",  route:"settings",    show:isAdmin||can("canManageSettings")},
             ].filter(m=>m.show).map(m=>(
               <button key={m.route} onClick={()=>{setMenuOpen(false); if(m.route!=="inventory") push(m.route);}}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderRadius:0}}>
@@ -2999,6 +3027,58 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           </div>
         </div>
 
+        {/* Snabbfilter — knappar för vanliga filter */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          {[
+            { key:"low", label:"Lågt lager", icon:"triangle-exclamation", active:filters.low, toggle:()=>setFilters({...filters, low:!filters.low}) },
+            { key:"reserved", label:"Reserverade", icon:"bookmark", active:filters.reserved, toggle:()=>setFilters({...filters, reserved:!filters.reserved}) },
+            { key:"noImage", label:"Utan bild", icon:"image", active:filters.noImage, toggle:()=>setFilters({...filters, noImage:!filters.noImage}) },
+          ].map(qf=>(
+            <button key={qf.key} onClick={qf.toggle}
+              style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",borderRadius:16,border:`1.5px solid ${qf.active?B:BD}`,background:qf.active?B:WH,color:qf.active?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer",boxShadow:SH}}>
+              <i className={`fa-solid fa-${qf.icon}`} style={{fontSize:11}}/> {qf.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Lagernummer- och artikelnummer-filter (flera med komma) */}
+        <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:140,position:"relative"}}>
+            <input value={filters.stockNums} onChange={e=>setFilters({...filters, stockNums:e.target.value})} placeholder="Lagernr (t.ex. 11, 15, 23)"
+              style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${filters.stockNums?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box",background:filters.stockNums?B+"08":WH}}/>
+          </div>
+          <div style={{flex:1,minWidth:140,position:"relative"}}>
+            <input value={filters.artNums} onChange={e=>setFilters({...filters, artNums:e.target.value.toUpperCase()})} placeholder="Artikelnr (flera med ,)"
+              style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${filters.artNums?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box",background:filters.artNums?B+"08":WH,fontFamily:"monospace"}}/>
+          </div>
+        </div>
+
+        {/* Aktiva filter som taggar med ✕ + Rensa allt */}
+        {(activeCount>0 || search) && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10}}>
+            {search&&<FilterTag label={`Sök: ${search}`} onRemove={()=>setSearch("")}/>}
+            {filters.stockNums&&<FilterTag label={`Lagernr: ${filters.stockNums}`} onRemove={()=>setFilters({...filters,stockNums:""})}/>}
+            {filters.artNums&&<FilterTag label={`Artikelnr: ${filters.artNums}`} onRemove={()=>setFilters({...filters,artNums:""})}/>}
+            {filters.low&&<FilterTag label="Lågt lager" onRemove={()=>setFilters({...filters,low:false})}/>}
+            {filters.reserved&&<FilterTag label="Reserverade" onRemove={()=>setFilters({...filters,reserved:false})}/>}
+            {filters.noImage&&<FilterTag label="Utan bild" onRemove={()=>setFilters({...filters,noImage:false})}/>}
+            {filters.cats.map(c=><FilterTag key={c} label={c} onRemove={()=>setFilters({...filters,cats:filters.cats.filter(x=>x!==c)})}/>)}
+            {filters.conds.map(c=><FilterTag key={c} label={c} onRemove={()=>setFilters({...filters,conds:filters.conds.filter(x=>x!==c)})}/>)}
+            {filters.sides.map(s=><FilterTag key={s} label={s} onRemove={()=>setFilters({...filters,sides:filters.sides.filter(x=>x!==s)})}/>)}
+            {filters.make&&<FilterTag label={filters.make} onRemove={()=>setFilters({...filters,make:""})}/>}
+            {filters.brandGroup&&<FilterTag label={filters.brandGroup} onRemove={()=>setFilters({...filters,brandGroup:""})}/>}
+            {filters.locationType&&<FilterTag label={filters.locationType} onRemove={()=>setFilters({...filters,locationType:""})}/>}
+            {filters.model&&<FilterTag label={filters.model} onRemove={()=>setFilters({...filters,model:""})}/>}
+            {filters.supplier&&<FilterTag label={filters.supplier} onRemove={()=>setFilters({...filters,supplier:""})}/>}
+            {(filters.yearMin||filters.yearMax)&&<FilterTag label={`År ${filters.yearMin||"…"}-${filters.yearMax||"…"}`} onRemove={()=>setFilters({...filters,yearMin:"",yearMax:""})}/>}
+            {(filters.priceMin||filters.priceMax)&&<FilterTag label={`Pris ${filters.priceMin||"…"}-${filters.priceMax||"…"}`} onRemove={()=>setFilters({...filters,priceMin:"",priceMax:""})}/>}
+            <button onClick={()=>{ setSearch(""); setFilters({ cats:[], conds:[], sides:[], make:"", brandGroup:"", locationType:"", model:"", yearMin:"", yearMax:"", priceMin:"", priceMax:"", low:false, supplier:"", stockNums:"", artNums:"", reserved:false, noImage:false }); }}
+              style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:16,border:`1.5px solid ${R}40`,background:R+"08",color:R,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              <i className="fa-solid fa-xmark"/> Rensa allt
+            </button>
+          </div>
+        )}
+
         {/* Sort sheet */}
         {showSort && (
           <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:8,overflow:"hidden"}}>
@@ -3021,20 +3101,6 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                 </button>
               );
             })}
-          </div>
-        )}
-
-        {/* Active filter chips */}
-        {activeCount>0 && (
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-            {filters.cats.map(c=><span key={c} style={{background:B+"15",color:B,border:`1px solid ${B}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
-            {filters.conds.map(c=><span key={c} style={{background:AM+"15",color:AM,border:`1px solid ${AM}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
-            {filters.sides.map(c=><span key={c} style={{background:B+"15",color:B,border:`1px solid ${B}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{c}</span>)}
-            {filters.make&&<span style={{background:MU+"15",color:MU,border:`1px solid ${MU}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{filters.make}</span>}
-            {filters.supplier&&<span style={{background:MU+"15",color:MU,border:`1px solid ${MU}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>{filters.supplier}</span>}
-            {(filters.priceMin||filters.priceMax)&&<span style={{background:GR+"15",color:GR,border:`1px solid ${GR}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>kr {filters.priceMin||"0"}-{filters.priceMax||"∞"}</span>}
-            {filters.low&&<span style={{background:R+"15",color:R,border:`1px solid ${R}25`,borderRadius:20,padding:"3px 8px",fontSize:11,fontWeight:600}}>Låglager</span>}
-            <button onClick={()=>setFilters({cats:[],conds:[],sides:[],make:"",brandGroup:"",locationType:"",model:"",yearMin:"",yearMax:"",priceMin:"",priceMax:"",low:false,supplier:""})} style={{background:"none",border:"none",color:MU,fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"3px 4px"}}>Rensa alla</button>
           </div>
         )}
 
