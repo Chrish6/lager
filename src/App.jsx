@@ -138,6 +138,36 @@ async function setImages(id, images) {
   } catch { return false; }
 }
 
+// ── Redigeringslås — hindrar två användare från att ändra samma del samtidigt ──
+async function lockAcquire(itemId, user, action) {
+  try {
+    return await fetch(`${API}/lock/acquire`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ itemId, user, action })
+    }).then(r=>r.json());
+  } catch { return { ok: true }; } // vid nätverksfel — blockera inte användaren
+}
+async function lockRelease(itemId, user) {
+  try {
+    await fetch(`${API}/lock/release`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ itemId, user })
+    });
+  } catch {}
+}
+async function lockHeartbeat(itemId, user) {
+  try {
+    return await fetch(`${API}/lock/heartbeat`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ itemId, user })
+    }).then(r=>r.json());
+  } catch { return { ok: true }; }
+}
+function fmtLockTime(ms) {
+  const min = Math.ceil(ms / 60000);
+  return min <= 1 ? "mindre än 1 min" : `~${min} min`;
+}
+
 // ─── Lösenordshashning — snabb enkel hash ─────────────────────────────────────
 function hashPassword(plain) {
   // Enkel men tillräcklig hash för lokalt system
@@ -192,14 +222,42 @@ const ALL_PERMISSIONS = [
   { key:"canBulkEdit",    label:"Massredigera",    icon:"fa-layer-group" },
   { key:"canManageSuppliers", label:"Hantera leverantörer", icon:"fa-truck" },
   { key:"canBackup",      label:"Backup & återställning", icon:"fa-rotate" },
+  { key:"canViewReservations", label:"Visa reservationer", icon:"fa-bookmark" },
+  { key:"canAddReservations",  label:"Lägg till reservationer", icon:"fa-square-plus" },
+  { key:"canEditReservations", label:"Ändra reservationer", icon:"fa-pen-to-square" },
   { key:"canManageUsers", label:"Hantera användare", icon:"fa-users" },
   { key:"canManageSettings", label:"Ändra inställningar", icon:"fa-sliders" },
 ];
 
-const CATEGORIES = ["Skärmar","Motorhuvar","Stötfångare","Dörrar","Spoilers","Sidokjolar","Bakluckor","Speglar","Rutor","Huvar","Övrigt"];
-const CONDITIONS = ["Ny","Begagnad - Gott skick","Begagnad - Liten spricka","Begagnad - Kräver lackering","Reservdelar / Skrotning"];
-const SIDES = ["","Vänster","Höger","Liksidig","Fram","Bak","Fram Vänster","Fram Höger","Bak Vänster","Bak Höger"];
-const LOCATION_TYPES = ["","Hylla","Låda","Hisshylla","Rum","Kontainer","Utomhus","Övrigt"];
+// Hjälpare: gör ett permissions-objekt med alla angivna nycklar satta till true
+const permsFrom = (...keys) => Object.fromEntries(keys.map(k => [k, true]));
+
+// Färdiga roller — admin kan redigera/lägga till/ta bort dessa.
+// Sparas i ow:roles. Detta är standarduppsättningen som skapas första gången.
+const DEFAULT_ROLES = [
+  {
+    id: "role_seller", name: "Säljare", color: "#1B3A6B",
+    permissions: permsFrom("canView","canSell","canUseCheckout","canPrintReceipt","canScan","canViewReservations"),
+  },
+  {
+    id: "role_warehouse", name: "Lagerarbetare", color: "#2E7D32",
+    permissions: permsFrom("canView","canAdd","canEdit","canScan","canBulkEdit","canViewReservations","canAddReservations","canEditReservations"),
+  },
+  {
+    id: "role_viewer", name: "Visning", color: "#757575",
+    permissions: permsFrom("canView","canViewReservations"),
+  },
+];
+
+const DEFAULT_CATEGORIES = ["Skärmar","Motorhuvar","Stötfångare","Dörrar","Spoilers","Sidokjolar","Bakluckor","Speglar","Rutor","Huvar","Övrigt"];
+const DEFAULT_CONDITIONS = ["Ny","Begagnad - Gott skick","Begagnad - Liten spricka","Begagnad - Kräver lackering","Reservdelar / Skrotning"];
+const DEFAULT_SIDES = ["","Vänster","Höger","Liksidig","Fram","Bak","Fram Vänster","Fram Höger","Bak Vänster","Bak Höger"];
+const DEFAULT_LOCATION_TYPES = ["","Hylla","Låda","Hisshylla","Rum","Kontainer","Utomhus","Övrigt"];
+// Bakåtkompatibilitet — dessa används som standard tills användaren redigerat listorna
+const CATEGORIES = DEFAULT_CATEGORIES;
+const CONDITIONS = DEFAULT_CONDITIONS;
+const SIDES = DEFAULT_SIDES;
+const LOCATION_TYPES = DEFAULT_LOCATION_TYPES;
 
 // ── Bilmärkesgrupper ─────────────────────────────────────────────────────────
 const BRAND_GROUPS = {
@@ -620,6 +678,17 @@ function AppInner() {
       let st = await sget("ow:settings"); if (!st) { st={ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK" }; }
       let sup = await sget("ow:suppliers"); if (!sup) { sup=[]; }
       let fav = await sget("ow:favorites"); if (!fav) { fav=[]; }
+      let rl = await sget("ow:roles"); if (!rl || !Array.isArray(rl) || rl.length===0) { rl=DEFAULT_ROLES; await sset("ow:roles",rl); }
+      let lst = await sget("ow:lists");
+      if (!lst || typeof lst !== "object") { lst = { categories: DEFAULT_CATEGORIES, conditions: DEFAULT_CONDITIONS, sides: DEFAULT_SIDES, locationTypes: DEFAULT_LOCATION_TYPES }; await sset("ow:lists",lst); }
+      else {
+        lst = {
+          categories: lst.categories || DEFAULT_CATEGORIES,
+          conditions: lst.conditions || DEFAULT_CONDITIONS,
+          sides: lst.sides || DEFAULT_SIDES,
+          locationTypes: lst.locationTypes || DEFAULT_LOCATION_TYPES,
+        };
+      }
 
       // Strippa ev. inbäddade bilder så listan hålls lätt och snabb
       if (Array.isArray(i) && i.some(it=>it.images?.length>0)) {
@@ -628,7 +697,7 @@ function AppInner() {
       // Sätt delta-synk-vattenmärket till senaste kända ändring
       lastSyncRef.current = Array.isArray(i) ? i.reduce((a,it)=>Math.max(a,it.updatedAt||0),0) : 0;
 
-      setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setLoaded(true);
+      setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setRoles(rl); setLists(lst); setLoaded(true);
 
       // Öppna direkt på artikeln om URL:en innehåller ?item=ID (delad länk)
       try {
@@ -686,12 +755,16 @@ function AppInner() {
   const [settings, setSettings] = useState({ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK", lowStockAlert:2 });
   const [suppliers, setSuppliers] = useState([]);
   const [favorites, setFavorites] = useState([]);
+  const [roles, setRoles] = useState(DEFAULT_ROLES);
+  const [lists, setLists] = useState({ categories: DEFAULT_CATEGORIES, conditions: DEFAULT_CONDITIONS, sides: DEFAULT_SIDES, locationTypes: DEFAULT_LOCATION_TYPES });
 
   const saveSales     = useCallback(async v => { setSales(v);     await sset("ow:sales",v);     }, []);
   const saveItems     = useCallback(async v => { setItems(v);     await sset("ow:items",v);     }, []);
   const saveUsers     = useCallback(async v => { setUsers(v);     await sset("ow:users",v);     }, []);
   const saveSettings  = useCallback(async v => { setSettings(v); await sset("ow:settings",v);  }, []);
   const saveSuppliers = useCallback(async v => { setSuppliers(v);await sset("ow:suppliers",v); }, []);
+  const saveRoles = useCallback(async v => { setRoles(v); await sset("ow:roles",v); }, []);
+  const saveLists = useCallback(async v => { setLists(v); await sset("ow:lists",v); }, []);
   const saveFavorites = useCallback(async v => { setFavorites(v);await sset("ow:favorites",v); }, []);
 
   const logActivity = useCallback(async (type, description, extra={}) => {
@@ -704,15 +777,25 @@ function AppInner() {
   }, []);
 
   const addToCart = useCallback((item, qty=1) => {
-    setCart(c => {
-      const existing = c.find(r => r.item.id === item.id);
-      if (existing) {
-        return c.map(r => r.item.id === item.id ? {...r, qty: r.qty + qty} : r);
+    // Försök låsa delen för kassan — så ingen annan kan sälja/redigera den
+    const meUser = session ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
+    lockAcquire(item.id, meUser, "cart").then(r => {
+      if (!r.ok && r.lockedBy && r.lockedBy !== meUser) {
+        toast$(`${r.lockedBy} ${r.action==="cart"?"har redan den i sin kassa":"redigerar den"} — kunde inte läggas till`, "error");
+        return;
       }
-      return [...c, { item, qty, unitPrice: item.price, discountMode:"pct", discountPct:0, discountKr:0 }];
+      setCart(c => {
+        const existing = c.find(r2 => r2.item.id === item.id);
+        if (existing) return c.map(r2 => r2.item.id === item.id ? {...r2, qty: r2.qty + qty} : r2);
+        return [...c, { item, qty, unitPrice: item.price, discountMode:"pct", discountPct:0, discountKr:0 }];
+      });
     });
-  }, []);
-  const clearCart = useCallback(() => setCart([]), []);
+  }, [session, users]);
+  const clearCart = useCallback(() => {
+    // Släpp alla kassa-lås
+    const meUser = session ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
+    setCart(c => { c.forEach(r => lockRelease(r.item.id, meUser)); return []; });
+  }, [session, users]);
 
   // Must be before any early returns (Rules of Hooks)
   const isMobile = useIsMobile();
@@ -727,9 +810,16 @@ function AppInner() {
 
   const currentUser = session ? users.find(u=>u.id===session) : null;
   const isAdmin = currentUser?.role === "admin";
-  const can = p => { if (!currentUser) return p==="canView"; if (isAdmin) return true; return !!currentUser.permissions?.[p]; };
+  const can = p => {
+    if (!currentUser) return p==="canView";
+    if (isAdmin) return true;
+    // Behörighet från rollen (om användaren har en roll) + ev. egna extra behörigheter
+    const role = currentUser.roleId ? roles.find(r => r.id === currentUser.roleId) : null;
+    if (role?.permissions?.[p]) return true;
+    return !!currentUser.permissions?.[p];
+  };
 
-  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, setItems, setSales, setSettings, setSuppliers };
+  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, setItems, setSales, setSettings, setSuppliers };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -780,6 +870,9 @@ function AppInner() {
           {current.name === "checkout"     && <CheckoutPage     {...sharedProps} />}
           {current.name === "login"        && <LoginPage        {...sharedProps} />}
           {current.name === "users"        && <UsersPage        {...sharedProps} />}
+          {current.name === "roles"        && <RolesPage        {...sharedProps} />}
+          {current.name === "managelists"  && <ManageListsPage  {...sharedProps} />}
+          {current.name === "editrole"     && <EditRolePage     {...sharedProps} {...current.props} />}
           {current.name === "edituser"     && <EditUserPage     {...sharedProps} {...current.props} />}
           {current.name === "perms"        && <PermsPage        {...sharedProps} {...current.props} />}
           {current.name === "saleslog"     && <SalesLogPage     {...sharedProps} />}
@@ -819,19 +912,24 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
 
   const removeRow = (key) => setRows(rs => rs.filter(r => r.key!==key));
 
+  const VAT_RATE = 0.25;
   const addItemToRows = (item) => {
     setRows(rs => {
       const existing = rs.find(r => r.item.id===item.id);
       if (existing) return rs.map(r => r.item.id===item.id ? {...r, qty: r.qty+1} : r);
-      return [...rs, { item, qty:1, unitPrice:item.price, discountMode:"pct", discountPct:0, discountKr:0, key: item.id+"-"+Date.now() }];
+      return [...rs, { item, qty:1, unitPrice:item.price, priceMode:"incl", discountMode:"pct", discountPct:0, discountKr:0, key: item.id+"-"+Date.now() }];
     });
   };
 
+  // rowTotal: unitPrice tolkas som inkl ELLER exkl moms beroende på radens priceMode.
+  // finalPrice/lineTotal är alltid INKL moms (det kunden betalar).
   const rowTotal = r => {
-    const fp = r.discountMode==="pct"
+    const base = r.discountMode==="pct"
       ? Math.round(r.unitPrice*(1-r.discountPct/100))
       : Math.max(0, r.unitPrice - r.discountKr);
-    return { finalPrice: fp, lineTotal: r.qty * fp };
+    const fpIncl = (r.priceMode==="excl") ? Math.round(base*(1+VAT_RATE)) : base;
+    const fpExcl = (r.priceMode==="excl") ? base : Math.round(base/(1+VAT_RATE));
+    return { finalPrice: fpIncl, finalExcl: fpExcl, lineTotal: r.qty * fpIncl, lineExcl: r.qty * fpExcl };
   };
 
   const grandTotal = rows.reduce((a,r) => a + rowTotal(r).lineTotal, 0);
@@ -843,8 +941,8 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     const now = Date.now();
     const receiptId = genId("rec");
     const saleEntries = rows.map(r => {
-      const { finalPrice, lineTotal } = rowTotal(r);
-      const effDisc = r.unitPrice>0 ? Math.round((1-finalPrice/r.unitPrice)*100) : 0;
+      const { finalPrice, finalExcl, lineTotal, lineExcl } = rowTotal(r);
+      const effDisc = r.unitPrice>0 ? Math.round((1-(r.priceMode==="excl"?finalExcl:finalPrice)/r.unitPrice)*100) : 0;
       return {
         id: genId("sale"),
         receiptId,
@@ -855,13 +953,19 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
         itemSide: r.item.side||"",
         qty: r.qty,
         unitPrice: finalPrice,
+        priceInclVat: finalPrice,
+        priceExclVat: finalExcl,
+        vatPerUnit: finalPrice - finalExcl,
+        vatRate: VAT_RATE,
+        totalExclVat: lineExcl,
+        totalVat: lineTotal - lineExcl,
         originalPrice: r.item.price,
         manualPrice: r.unitPrice !== r.item.price ? r.unitPrice : null,
         discount: effDisc,
         discountKr: r.unitPrice - finalPrice,
         total: lineTotal,
         costPrice: r.item.costPrice||0,
-        profit: lineTotal - r.qty*(r.item.costPrice||0),
+        profit: lineExcl - r.qty*(r.item.costPrice||0),
         buyer: buyer.trim()||"Okänd",
         payMethod,
         note: note.trim(),
@@ -922,7 +1026,7 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
 
         {/* Cart rows */}
         {rows.map(r => {
-          const { finalPrice, lineTotal } = rowTotal(r);
+          const { finalPrice, finalExcl, lineTotal, lineExcl } = rowTotal(r);
           const priceChanged = r.unitPrice !== r.item.price;
           const hasDisc = r.discountPct>0 || r.discountKr>0;
           const overStock = r.qty > r.item.quantity;
@@ -956,12 +1060,16 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
                 </div>
 
                 <div>
-                  <label style={{display:"flex",justifyContent:"space-between",fontSize:10,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",marginBottom:3}}>
+                  <label style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",marginBottom:3}}>
                     <span>Pris kr/st</span>
-                    {priceChanged&&<button onClick={()=>updateRow(r.key,"unitPrice",r.item.price)} style={{background:"none",border:"none",color:B,fontSize:9,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Återst.</button>}
+                    <div style={{display:"flex",gap:2,background:BG,borderRadius:4,padding:1}}>
+                      <button onClick={()=>updateRow(r.key,"priceMode","incl")} style={{padding:"2px 6px",borderRadius:3,border:"none",background:(r.priceMode||"incl")==="incl"?WH:"transparent",color:(r.priceMode||"incl")==="incl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>ink</button>
+                      <button onClick={()=>updateRow(r.key,"priceMode","excl")} style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.priceMode==="excl"?WH:"transparent",color:r.priceMode==="excl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>exk</button>
+                    </div>
                   </label>
                   <input type="number" min="0" value={r.unitPrice} onChange={e=>updateRow(r.key,"unitPrice",Math.max(0,Number(e.target.value)))}
                     style={{width:"100%",padding:"7px 8px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:13,fontWeight:priceChanged?700:400,color:priceChanged?B:TX,background:priceChanged?B+"08":WH}}/>
+                  <div style={{fontSize:9,color:MU,marginTop:2}}>{(r.priceMode||"incl")==="incl"?"Priset anges inkl. moms":"Priset anges exkl. moms"}</div>
                 </div>
 
                 <div>
@@ -985,7 +1093,7 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
 
               {/* Row total */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8,borderTop:`1px solid ${BD}50`}}>
-                <div style={{fontSize:11,color:MU}}>{r.qty} st × {finalPrice.toLocaleString("sv-SE")} kr{hasDisc?` (rabatt)`:""}</div>
+                <div style={{fontSize:11,color:MU}}>{r.qty} st · {lineExcl.toLocaleString("sv-SE")} exkl + {(lineTotal-lineExcl).toLocaleString("sv-SE")} moms</div>
                 <div style={{fontWeight:800,fontSize:15,color:B}}>{lineTotal.toLocaleString("sv-SE")} kr</div>
               </div>
             </div>
@@ -2099,6 +2207,9 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
             <button onClick={()=>push("suppliers")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="truck" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Leverantörer</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
+            <button onClick={()=>push("managelists")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
+              <Icon name="list-check" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Hantera listor (kategorier, skick m.m.)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+            </button>
             <button onClick={()=>push("backup")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="rotate" style={{color:B}}/> <span style={{fontSize:13,fontWeight:600}}>Backup & Återställning</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
@@ -2145,7 +2256,7 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
     </Page>
   );
 }
-function BulkEditPage({ items, saveItems, pop, toast$, can, isAdmin }) {
+function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBulkEdit")) return <Page><TopBar title="Massredigering" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [selected, setSelected] = useState(new Set());
   const [field, setField] = useState("category");
@@ -2158,8 +2269,8 @@ function BulkEditPage({ items, saveItems, pop, toast$, can, isAdmin }) {
   const filtered = items.filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.sku.toLowerCase().includes(search.toLowerCase()));
 
   const FIELDS = [
-    {k:"category", l:"Kategori", opts:CATEGORIES},
-    {k:"condition", l:"Skick", opts:CONDITIONS},
+    {k:"category", l:"Kategori", opts:lists?.categories||CATEGORIES},
+    {k:"condition", l:"Skick", opts:lists?.conditions||CONDITIONS},
     {k:"supplier", l:"Leverantör", opts:null},
     {k:"location", l:"Placering", opts:null},
   ];
@@ -3582,7 +3693,8 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
 }
 
 // ─── Filter Page ──────────────────────────────────────────────────────────────
-function FilterPage({ items, filters, setFilters, pop }) {
+function FilterPage({ items, filters, setFilters, lists, pop }) {
+  const CATS = lists?.categories||CATEGORIES, CONDS = lists?.conditions||CONDITIONS, SIDS = lists?.sides||SIDES;
   const [f, setF] = useState({...filters});
   const toggle = (key, val) => setF(p=>({...p,[key]:p[key].includes(val)?p[key].filter(x=>x!==val):[...p[key],val]}));
   const set = (key,val) => setF(p=>({...p,[key]:val}));
@@ -3655,19 +3767,19 @@ function FilterPage({ items, filters, setFilters, pop }) {
         {/* Kategori — chips */}
         <Section label="Kategori" value={f.cats.length?`${f.cats.length} valda`:""} />
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {CATEGORIES.map(c=><Chip key={c} label={c} active={f.cats.includes(c)} onClick={()=>toggle("cats",c)}/>)}
+          {CATS.map(c=><Chip key={c} label={c} active={f.cats.includes(c)} onClick={()=>toggle("cats",c)}/>)}
         </div>
 
         {/* Skick — chips med färg */}
         <Section label="Skick" value={f.conds.length?`${f.conds.length} valda`:""} />
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {CONDITIONS.map(c=><Chip key={c} label={c} active={f.conds.includes(c)} color={condColors[c]||MU} onClick={()=>toggle("conds",c)}/>)}
+          {CONDS.map(c=><Chip key={c} label={c} active={f.conds.includes(c)} color={condColors[c]||MU} onClick={()=>toggle("conds",c)}/>)}
         </div>
 
         {/* Sida — chips */}
         <Section label="Sida" value={f.sides.length?`${f.sides.length} valda`:""} />
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {SIDES.filter(Boolean).map(s=><Chip key={s} label={s} active={f.sides.includes(s)} onClick={()=>toggle("sides",s)}/>)}
+          {SIDS.filter(Boolean).map(s=><Chip key={s} label={s} active={f.sides.includes(s)} onClick={()=>toggle("sides",s)}/>)}
         </div>
 
         {/* Koncern — dropdown */}
@@ -3732,7 +3844,8 @@ const G2 = ({children}) => <div style={{display:"flex",gap:10,marginBottom:12}}>
 const H = ({children}) => <div style={{flex:1,minWidth:0}}>{children}</div>;
 
 // ─── Edit Page ────────────────────────────────────────────────────────────────
-function EditPage({ item, items, saveItems, pop, toast$ }) {
+function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser }) {
+  const CATS = lists?.categories||CATEGORIES, CONDS = lists?.conditions||CONDITIONS, SIDS = lists?.sides||SIDES, LOCTYPES = lists?.locationTypes||LOCATION_TYPES;
   const nextStockNumber = () => {
     const used = new Set(items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
     let n = 1;
@@ -3742,6 +3855,36 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
   const [f, setF] = useState(item ? {...item} : {name:"",stockNumber:nextStockNumber(),side:"",category:"Skärmar",quantity:1,price:0,costPrice:0,supplier:"",location:"",weight:"",colorCode:"",oem:"",description:"",condition:"Begagnad - Gott skick",compatible:"",make:"",model:"",yearFrom:"",yearTo:"",regNumber:"",notes:"",images:[]});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const fRef = useRef(); const cRef = useRef();
+
+  // ── Redigeringslås ──────────────────────────────────────────────────────────
+  const [lockState, setLockState] = useState(null); // null=okänt, {ok}|{blocked}
+  const [waitingUser, setWaitingUser] = useState(null);
+  const me = currentUser?.username || "Okänd";
+
+  useEffect(() => {
+    if (!item?.id) { setLockState({ ok: true }); return; } // ny del — inget lås behövs
+    let active = true;
+    let hbInterval = null;
+    (async () => {
+      const r = await lockAcquire(item.id, me, "edit");
+      if (!active) return;
+      if (r.ok) {
+        setLockState({ ok: true });
+        // Heartbeat var 30:e sek — håller låset vid liv + kollar om någon väntar
+        hbInterval = setInterval(async () => {
+          const h = await lockHeartbeat(item.id, me);
+          if (h.waitingUser) setWaitingUser(h.waitingUser);
+        }, 30000);
+      } else {
+        setLockState({ blocked: true, by: r.lockedBy, action: r.action, remainingMs: r.remainingMs });
+      }
+    })();
+    return () => {
+      active = false;
+      if (hbInterval) clearInterval(hbInterval);
+      if (item?.id) lockRelease(item.id, me); // släpp låset när man går ut
+    };
+  }, [item?.id]);
 
   // Ladda befintliga bilder (snabb endpoint)
   useEffect(() => {
@@ -3851,10 +3994,40 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
 
   const R2 = <Btn small onClick={save} style={{padding:"5px 14px"}}>Spara</Btn>;
 
+  // Blockerad — någon annan redigerar/säljer delen
+  if (lockState?.blocked) {
+    const actionText = lockState.action === "cart" ? "har den i sin kassa" : "redigerar den här delen";
+    return (
+      <Page noAnim>
+        <TopBar title="Delen är upptagen" onBack={pop} />
+        <div style={{padding:"40px 24px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:16}}>
+          <div style={{width:72,height:72,borderRadius:"50%",background:AM+"18",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Icon name="lock" style={{fontSize:30,color:AM}}/>
+          </div>
+          <div>
+            <div style={{fontWeight:800,fontSize:18,color:TX,marginBottom:6}}>{lockState.by} {actionText}</div>
+            <div style={{fontSize:14,color:MU,lineHeight:1.5,maxWidth:320}}>
+              Du kan inte ändra den här delen just nu. Den blir tillgänglig automatiskt om <strong style={{color:AM}}>{fmtLockTime(lockState.remainingMs)}</strong> om {lockState.by} inte blir klar innan dess.
+            </div>
+          </div>
+          <Btn variant="ghost" onClick={pop}><Icon name="arrow-left"/> Tillbaka</Btn>
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page noAnim>
       <TopBar title={item?"Redigera del":"Ny karossedel"} onBack={pop} right={R2} />
       <div style={{padding:"14px 14px 60px"}}>
+
+        {/* Banner — någon väntar på delen */}
+        {waitingUser&&(
+          <div style={{background:AM+"15",border:`1.5px solid ${AM}`,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+            <Icon name="clock" style={{color:AM,fontSize:18}}/>
+            <div style={{fontSize:13,color:TX,fontWeight:600}}><strong>{waitingUser}</strong> väntar på den här delen — spara och gå ut när du är klar.</div>
+          </div>
+        )}
 
         {/* De 4 obligatoriska fälten — samlade högst upp för smidigast möjliga flöde */}
         <div style={{background:B,borderRadius:10,padding:14,marginBottom:12}}>
@@ -3873,7 +4046,7 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
             <div style={{display:"flex",gap:8}}>
               <select value={f.locationType||""} onChange={e=>set("locationType",e.target.value)}
                 style={{width:130,border:`1.5px solid rgba(255,255,255,.3)`,borderRadius:7,padding:"9px 10px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.15)"}}>
-                {LOCATION_TYPES.map(t=><option key={t} value={t} style={{background:"#1B3A6B",color:WH}}>{t||"Typ av plats"}</option>)}
+                {LOCTYPES.map(t=><option key={t} value={t} style={{background:"#1B3A6B",color:WH}}>{t||"Typ av plats"}</option>)}
               </select>
               <input type="text" value={f.location} onChange={e=>set("location",e.target.value)} placeholder="Placering *"
                 style={{flex:1,border:`1.5px solid ${!f.location?.trim()?"#FF6B6B":"rgba(255,255,255,.3)"}`,borderRadius:7,padding:"9px 12px",fontSize:13,fontWeight:600,color:WH,background:"rgba(255,255,255,.12)"}}/>
@@ -3907,8 +4080,8 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
             <textarea value={f.description||""} onChange={e=>set("description",e.target.value)} rows={2} maxLength={200} placeholder="T.ex. fungerar perfekt, mindre repa på vänster sida..." style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:6,padding:"9px 12px",fontSize:13,resize:"none",fontFamily:"inherit"}}/>
             <div style={{fontSize:10,color:MU,textAlign:"right",marginTop:2}}>{(f.description||"").length}/200</div>
           </div>
-          <G2><H><Sel label="Kategori" value={f.category} onChange={e=>set("category",e.target.value)} options={CATEGORIES}/></H><H><Sel label="Sida" value={f.side} onChange={e=>set("side",e.target.value)} options={SIDES}/></H></G2>
-          <Sel label="Skick" value={f.condition} onChange={e=>set("condition",e.target.value)} options={CONDITIONS}/>
+          <G2><H><Sel label="Kategori" value={f.category} onChange={e=>set("category",e.target.value)} options={CATS}/></H><H><Sel label="Sida" value={f.side} onChange={e=>set("side",e.target.value)} options={SIDS}/></H></G2>
+          <Sel label="Skick" value={f.condition} onChange={e=>set("condition",e.target.value)} options={CONDS}/>
         </div>
 
         {/* Car info */}
@@ -3952,35 +4125,78 @@ function EditPage({ item, items, saveItems, pop, toast$ }) {
 function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push, pop, toast$ }) {
   const [qty, setQty] = useState(1);
   const [buyer, setBuyer] = useState("");
+  const VAT_RATE = 0.25; // 25% moms
+  // unitPrice hålls som pris INKL moms (källan). De två rutorna skriver båda hit.
   const [unitPrice, setUnitPrice] = useState(item.price);
+  // Vilken ruta som visas "rå" medan man skriver (så avrundning inte stör skrivandet)
+  const [editing, setEditing] = useState(null); // "incl" | "excl" | null
+  const [draftIncl, setDraftIncl] = useState(String(item.price));
+  const [draftExcl, setDraftExcl] = useState(String(Math.round(item.price/(1+VAT_RATE))));
   const [discountMode, setDiscountMode] = useState("pct"); // "pct" | "kr"
   const [discountPct, setDiscountPct] = useState(0);
   const [discountKr, setDiscountKr] = useState(0);
   const [note, setNote] = useState("");
-  const VAT_RATE = 0.25; // 25% moms
-  // Anger om priset man skriver in är inkl. eller exkl. moms
-  const [priceMode, setPriceMode] = useState("incl"); // "incl" | "excl"
 
-  // Pris efter rabatt, baserat på vald rabatt-typ ovanpå det manuellt satta unitPrice
+  // När man skriver i INKL-rutan → uppdatera priset + räkna ut EXKL automatiskt
+  const onInclChange = (v) => {
+    setDraftIncl(v);
+    const n = Math.max(0, Number(v)||0);
+    setUnitPrice(n);
+    setDraftExcl(String(Math.round(n/(1+VAT_RATE))));
+  };
+  // När man skriver i EXKL-rutan → räkna upp till inkl + uppdatera priset
+  const onExclChange = (v) => {
+    setDraftExcl(v);
+    const n = Math.max(0, Number(v)||0);
+    const incl = Math.round(n*(1+VAT_RATE));
+    setUnitPrice(incl);
+    setDraftIncl(String(incl));
+  };
+
+  // ── Redigeringslås — hindra samtidig försäljning/redigering av samma del ──
+  const [lockState, setLockState] = useState(null);
+  const me = currentUser?.username || "Okänd";
+  useEffect(() => {
+    if (!item?.id) { setLockState({ ok: true }); return; }
+    let active = true, hb = null;
+    (async () => {
+      const r = await lockAcquire(item.id, me, "edit");
+      if (!active) return;
+      if (r.ok) { setLockState({ ok: true }); hb = setInterval(()=>lockHeartbeat(item.id, me), 30000); }
+      else setLockState({ blocked: true, by: r.lockedBy, action: r.action, remainingMs: r.remainingMs });
+    })();
+    return () => { active=false; if(hb)clearInterval(hb); if(item?.id) lockRelease(item.id, me); };
+  }, [item?.id]);
+
+  // Pris efter rabatt (rabatt räknas på inkl-priset)
   const finalPrice = discountMode === "pct"
     ? Math.round(unitPrice * (1 - discountPct/100))
     : Math.max(0, unitPrice - discountKr);
   const effectiveDiscountPct = unitPrice>0 ? Math.round((1 - finalPrice/unitPrice)*100) : 0;
 
-  // Moms-beräkning: priset man satt är antingen inkl eller exkl moms,
-  // det andra räknas ut automatiskt.
-  const priceInclVat = priceMode === "incl" ? finalPrice : Math.round(finalPrice * (1 + VAT_RATE));
-  const priceExclVat = priceMode === "incl" ? Math.round(finalPrice / (1 + VAT_RATE)) : finalPrice;
+  // finalPrice är INKL moms (kunden betalar detta). Exkl räknas ut.
+  const priceInclVat = finalPrice;
+  const priceExclVat = Math.round(finalPrice / (1 + VAT_RATE));
   const vatPerUnit = priceInclVat - priceExclVat;
 
-  // Totalsumman baseras på pris INKL moms (det kunden faktiskt betalar)
   const total = qty * priceInclVat;
   const totalExclVat = qty * priceExclVat;
   const totalVat = qty * vatPerUnit;
   const profit = qty * (priceExclVat - (item.costPrice||0)); // vinst räknas exkl moms
   const priceChanged = unitPrice !== item.price;
 
-  const resetPrice = () => { setUnitPrice(item.price); setDiscountPct(0); setDiscountKr(0); };
+  const resetPrice = () => {
+    setUnitPrice(item.price);
+    setDraftIncl(String(item.price));
+    setDraftExcl(String(Math.round(item.price/(1+VAT_RATE))));
+    setDiscountPct(0); setDiscountKr(0);
+  };
+
+  // Håll utkastvärdena i synk när man INTE aktivt redigerar (t.ex. efter återställning)
+  useEffect(() => {
+    if (editing !== "incl") setDraftIncl(String(unitPrice));
+    if (editing !== "excl") setDraftExcl(String(Math.round(unitPrice/(1+VAT_RATE))));
+  }, [unitPrice]);
 
   const sell = async () => {
     const it = items.find(i=>i.id===item.id);
@@ -4000,7 +4216,6 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       vatRate: VAT_RATE,
       totalExclVat,
       totalVat,
-      priceMode,
       originalPrice: item.price,
       manualPrice: priceChanged ? unitPrice : null,
       discount: effectiveDiscountPct,
@@ -4038,6 +4253,27 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
     push("receipt",{sale:saleEntry});
   };
 
+  if (lockState?.blocked) {
+    const actionText = lockState.action === "cart" ? "har den i sin kassa" : "redigerar den här delen";
+    return (
+      <Page>
+        <TopBar title="Delen är upptagen" onBack={pop} />
+        <div style={{padding:"40px 24px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:16}}>
+          <div style={{width:72,height:72,borderRadius:"50%",background:AM+"18",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Icon name="lock" style={{fontSize:30,color:AM}}/>
+          </div>
+          <div>
+            <div style={{fontWeight:800,fontSize:18,color:TX,marginBottom:6}}>{lockState.by} {actionText}</div>
+            <div style={{fontSize:14,color:MU,lineHeight:1.5,maxWidth:320}}>
+              Du kan inte sälja den här delen just nu. Den blir tillgänglig automatiskt om <strong style={{color:AM}}>{fmtLockTime(lockState.remainingMs)}</strong> om {lockState.by} inte blir klar innan dess.
+            </div>
+          </div>
+          <Btn variant="ghost" onClick={pop}><Icon name="arrow-left"/> Tillbaka</Btn>
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page>
       <TopBar title="Sälj del" onBack={pop} />
@@ -4057,30 +4293,34 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
 
         {/* Pris & rabatt */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,marginBottom:12,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",gap:10}}>
-            <div style={{flex:1}}><Inp label="Antal" type="number" min="1" value={qty} onChange={e=>setQty(Math.max(1,Number(e.target.value)))}/></div>
-            <div style={{flex:1}}>
-              <label style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>
-                <span>Pris (kr/st)</span>
-                {priceChanged&&<button onClick={resetPrice} style={{background:"none",border:"none",color:B,fontSize:10,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Återställ</button>}
-              </label>
-              <input type="number" min="0" value={unitPrice} onChange={e=>setUnitPrice(Math.max(0,Number(e.target.value)))}
-                style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:14,fontWeight:priceChanged?700:400,color:priceChanged?B:TX,background:priceChanged?B+"08":WH}}/>
-            </div>
-          </div>
+          <div><Inp label="Antal" type="number" min="1" value={qty} onChange={e=>setQty(Math.max(1,Number(e.target.value)))}/></div>
 
-          {/* Moms — välj om priset är inkl eller exkl moms, det andra räknas ut */}
+          {/* Två prisrutor — inkl och exkl moms, räknar ut varandra automatiskt */}
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
-              <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Moms (25%)</label>
-              <div style={{display:"flex",gap:4,background:BG,borderRadius:6,padding:2}}>
-                <button onClick={()=>setPriceMode("incl")} style={{padding:"3px 12px",borderRadius:5,border:"none",background:priceMode==="incl"?WH:"transparent",color:priceMode==="incl"?B:MU,fontSize:11,fontWeight:700,boxShadow:priceMode==="incl"?SH:"none",cursor:"pointer"}}>Inkl. moms</button>
-                <button onClick={()=>setPriceMode("excl")} style={{padding:"3px 12px",borderRadius:5,border:"none",background:priceMode==="excl"?WH:"transparent",color:priceMode==="excl"?B:MU,fontSize:11,fontWeight:700,boxShadow:priceMode==="excl"?SH:"none",cursor:"pointer"}}>Exkl. moms</button>
+            <label style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>
+              <span>Pris per styck (moms 25%)</span>
+              {priceChanged&&<button onClick={resetPrice} style={{background:"none",border:"none",color:B,fontSize:10,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Återställ</button>}
+            </label>
+            <div style={{display:"flex",gap:10}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,fontWeight:700,color:MU,marginBottom:3}}>EXKL. MOMS</div>
+                <input type="number" min="0" inputMode="decimal"
+                  value={draftExcl}
+                  onFocus={()=>setEditing("excl")} onBlur={()=>setEditing(null)}
+                  onChange={e=>onExclChange(e.target.value)}
+                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:14,fontWeight:600,color:TX,background:priceChanged?B+"06":WH}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"flex-end",paddingBottom:9,color:MU,fontSize:16,fontWeight:700}}>→</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,fontWeight:700,color:B,marginBottom:3}}>INKL. MOMS</div>
+                <input type="number" min="0" inputMode="decimal"
+                  value={draftIncl}
+                  onFocus={()=>setEditing("incl")} onBlur={()=>setEditing(null)}
+                  onChange={e=>onInclChange(e.target.value)}
+                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:14,fontWeight:700,color:B,background:priceChanged?B+"08":WH}}/>
               </div>
             </div>
-            <div style={{fontSize:11,color:MU}}>
-              Priset du skrev in tolkas som <strong style={{color:B}}>{priceMode==="incl"?"inkl. moms":"exkl. moms"}</strong> — det andra räknas ut automatiskt nedan.
-            </div>
+            <div style={{fontSize:11,color:MU,marginTop:6}}>Skriv i valfri ruta — den andra fylls i automatiskt.</div>
           </div>
 
           {/* Rabatt toggle: % eller kr */}
@@ -4443,26 +4683,38 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
   );
 }
 // ─── Users Page ───────────────────────────────────────────────────────────────
-function UsersPage({ users, saveUsers, currentUser, push, pop, toast$, can, isAdmin }) {
+function UsersPage({ users, saveUsers, roles, currentUser, push, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canManageUsers")) return <Page><TopBar title="Användare" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [confirmDel, setConfirmDel] = useState(null);
   const del = async (id) => {
     await saveUsers(users.filter(u=>u.id!==id)); toast$("Borttagen","success"); setConfirmDel(null);
   };
-  const right = <Btn small onClick={()=>push("edituser",{user:null})}><Icon name="plus"/> Ny</Btn>;
+  const roleOf = u => (roles||[]).find(r => r.id === u.roleId);
+  const right = (
+    <div style={{display:"flex",gap:6}}>
+      <Btn small variant="ghost" onClick={()=>push("roles")}><Icon name="user-shield"/> Roller</Btn>
+      <Btn small onClick={()=>push("edituser",{user:null})}><Icon name="plus"/> Ny</Btn>
+    </div>
+  );
   return (
     <Page>
       <TopBar title="Användare" onBack={pop} subtitle="Hantera team" right={right} />
       <div style={{padding:"14px 14px 40px",display:"flex",flexDirection:"column",gap:8}}>
-        {users.map(u=>(
+        {users.map(u=>{
+          const role = roleOf(u);
+          return (
           <div key={u.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-              <div style={{width:38,height:38,borderRadius:8,background:u.role==="admin"?R:B,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:16,flexShrink:0}}>
+              <div style={{width:38,height:38,borderRadius:8,background:u.role==="admin"?R:(role?.color||B),display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:16,flexShrink:0}}>
                 {u.username[0].toUpperCase()}
               </div>
               <div>
                 <div style={{fontWeight:700}}>{u.username} {u.id===currentUser.id&&<Badge label="Du" color={B} small />}</div>
-                <Badge label={u.role==="admin"?"Admin":"Användare"} color={u.role==="admin"?R:B} small />
+                {u.role==="admin"
+                  ? <Badge label="Admin" color={R} small />
+                  : role
+                    ? <Badge label={role.name} color={role.color||B} small />
+                    : <Badge label="Egna behörigheter" color={MU} small />}
               </div>
               <div style={{marginLeft:"auto",display:"flex",gap:6}}>
                 {u.role!=="admin"&&<Btn variant="blue" small onClick={()=>push("perms",{user:u})}><Icon name="key"/></Btn>}
@@ -4472,12 +4724,19 @@ function UsersPage({ users, saveUsers, currentUser, push, pop, toast$, can, isAd
             </div>
             {u.role!=="admin"&&(
               <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                {ALL_PERMISSIONS.filter(p=>u.permissions?.[p.key]).map(p=><Badge key={p.key} label={<><Icon name={p.icon.replace("fa-","")} style={{marginRight:4}}/>{p.label}</>} color={B} small />)}
-                {!ALL_PERMISSIONS.some(p=>u.permissions?.[p.key])&&<span style={{fontSize:11,color:MU}}>Inga behörigheter</span>}
+                {(() => {
+                  // Visa effektiva behörigheter (roll + egna)
+                  const effective = { ...(role?.permissions||{}), ...(u.permissions||{}) };
+                  const active = ALL_PERMISSIONS.filter(p=>effective[p.key]);
+                  return active.length>0
+                    ? active.map(p=><Badge key={p.key} label={<><Icon name={p.icon.replace("fa-","")} style={{marginRight:4}}/>{p.label}</>} color={B} small />)
+                    : <span style={{fontSize:11,color:MU}}>Inga behörigheter</span>;
+                })()}
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {confirmDel&&(
@@ -4496,8 +4755,222 @@ function UsersPage({ users, saveUsers, currentUser, push, pop, toast$, can, isAd
   );
 }
 
+// ─── Hantera listor — redigera kategorier, skick, sidor, placeringstyper ──────
+function ManageListsPage({ lists, saveLists, pop, toast$, isAdmin, can }) {
+  if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="Hantera listor" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+  const [local, setLocal] = useState({
+    categories: [...(lists?.categories||DEFAULT_CATEGORIES)],
+    conditions: [...(lists?.conditions||DEFAULT_CONDITIONS)],
+    sides: [...(lists?.sides||DEFAULT_SIDES)].filter(Boolean),
+    locationTypes: [...(lists?.locationTypes||DEFAULT_LOCATION_TYPES)].filter(Boolean),
+  });
+  const [newVal, setNewVal] = useState({ categories:"", conditions:"", sides:"", locationTypes:"" });
+
+  const addItem = (key) => {
+    const v = newVal[key].trim();
+    if (!v) return;
+    if (local[key].some(x => x.toLowerCase() === v.toLowerCase())) { toast$("Finns redan","error"); return; }
+    setLocal(p => ({ ...p, [key]: [...p[key], v] }));
+    setNewVal(p => ({ ...p, [key]: "" }));
+  };
+  const removeItem = (key, val) => setLocal(p => ({ ...p, [key]: p[key].filter(x => x !== val) }));
+  const moveItem = (key, idx, dir) => setLocal(p => {
+    const arr = [...p[key]]; const j = idx + dir;
+    if (j < 0 || j >= arr.length) return p;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    return { ...p, [key]: arr };
+  });
+
+  const save = async () => {
+    // Sidor och placeringstyper behåller en ledande tom sträng (= "ingen/valfri")
+    await saveLists({
+      categories: local.categories,
+      conditions: local.conditions,
+      sides: ["", ...local.sides],
+      locationTypes: ["", ...local.locationTypes],
+    });
+    toast$("Listor sparade","success");
+    pop();
+  };
+
+  const sections = [
+    { key:"categories", title:"Kategorier", icon:"fa-tags", hint:"T.ex. Skärmar, Dörrar, Stötfångare" },
+    { key:"conditions", title:"Skick", icon:"fa-star-half-stroke", hint:"T.ex. Ny, Begagnad – Gott skick" },
+    { key:"sides", title:"Sidor", icon:"fa-arrows-left-right", hint:"T.ex. Vänster, Höger, Fram, Bak" },
+    { key:"locationTypes", title:"Placeringstyper", icon:"fa-warehouse", hint:"T.ex. Hylla, Låda, Rum" },
+  ];
+
+  return (
+    <Page>
+      <TopBar title="Hantera listor" onBack={pop} right={<Btn small onClick={save}><Icon name="check"/> Spara</Btn>} />
+      <div style={{padding:"14px 14px 60px"}}>
+        <div style={{fontSize:12,color:MU,marginBottom:12,lineHeight:1.5}}>
+          Lägg till, ta bort eller ändra ordning. Tar du bort ett värde försvinner det bara från nya val — delar som redan har det behåller sitt värde.
+        </div>
+        {sections.map(sec=>(
+          <div key={sec.key} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <i className={`fa-solid ${sec.icon}`} style={{color:B,fontSize:15}}/>
+              <div style={{fontWeight:800,fontSize:15,color:TX}}>{sec.title}</div>
+            </div>
+            <div style={{fontSize:11,color:MU,marginBottom:10}}>{sec.hint}</div>
+
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+              {local[sec.key].length===0&&<div style={{fontSize:12,color:MU,fontStyle:"italic"}}>Inga värden än</div>}
+              {local[sec.key].map((val,idx)=>(
+                <div key={val} style={{display:"flex",alignItems:"center",gap:8,background:BG,borderRadius:7,padding:"7px 10px"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                    <button onClick={()=>moveItem(sec.key,idx,-1)} disabled={idx===0} style={{background:"none",border:"none",cursor:idx===0?"default":"pointer",color:idx===0?BD:MU,fontSize:10,padding:0,lineHeight:1}}><i className="fa-solid fa-chevron-up"/></button>
+                    <button onClick={()=>moveItem(sec.key,idx,1)} disabled={idx===local[sec.key].length-1} style={{background:"none",border:"none",cursor:idx===local[sec.key].length-1?"default":"pointer",color:idx===local[sec.key].length-1?BD:MU,fontSize:10,padding:0,lineHeight:1}}><i className="fa-solid fa-chevron-down"/></button>
+                  </div>
+                  <span style={{flex:1,fontSize:13,fontWeight:600,color:TX}}>{val}</span>
+                  <button onClick={()=>removeItem(sec.key,val)} style={{background:"none",border:"none",cursor:"pointer",color:R,fontSize:14,padding:"2px 4px"}}><i className="fa-solid fa-trash"/></button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{display:"flex",gap:6}}>
+              <input type="text" value={newVal[sec.key]} onChange={e=>setNewVal(p=>({...p,[sec.key]:e.target.value}))}
+                onKeyDown={e=>{ if(e.key==="Enter") addItem(sec.key); }}
+                placeholder="Lägg till nytt värde…"
+                style={{flex:1,border:`1.5px solid ${BD}`,borderRadius:7,padding:"8px 11px",fontSize:13}}/>
+              <Btn small variant="blue" onClick={()=>addItem(sec.key)}><Icon name="plus"/></Btn>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Page>
+  );
+}
+
+// ─── Roles Page — hantera roller ──────────────────────────────────────────────
+function RolesPage({ roles, saveRoles, users, push, pop, toast$, isAdmin, can }) {
+  if (!isAdmin && !can("canManageUsers")) return <Page><TopBar title="Roller" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+  const [confirmDel, setConfirmDel] = useState(null);
+  const usersWithRole = id => users.filter(u => u.roleId === id).length;
+  const del = async (role) => {
+    await saveRoles((roles||[]).filter(r=>r.id!==role.id));
+    toast$("Roll borttagen","success");
+    setConfirmDel(null);
+  };
+  const right = <Btn small onClick={()=>push("editrole",{role:null})}><Icon name="plus"/> Ny roll</Btn>;
+  return (
+    <Page>
+      <TopBar title="Roller" onBack={pop} subtitle="Behörighetsmallar" right={right} />
+      <div style={{padding:"14px 14px 40px",display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{fontSize:12,color:MU,marginBottom:4}}>Roller är färdiga behörighetspaket du kan tilldela användare. Ändra en roll så uppdateras alla som har den.</div>
+        {(roles||[]).map(role=>{
+          const count = ALL_PERMISSIONS.filter(p=>role.permissions?.[p.key]).length;
+          const used = usersWithRole(role.id);
+          return (
+            <div key={role.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:14,height:14,borderRadius:4,background:role.color||B,flexShrink:0}}/>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{role.name}</div>
+                  <div style={{fontSize:12,color:MU}}>{count} behörigheter · {used} användare</div>
+                </div>
+                <Btn variant="ghost" small onClick={()=>push("editrole",{role})}><Icon name="pen"/></Btn>
+                <Btn variant="ghost" small onClick={()=>setConfirmDel(role)} style={{color:R}}><Icon name="trash"/></Btn>
+              </div>
+            </div>
+          );
+        })}
+        {(roles||[]).length===0&&<div style={{textAlign:"center",padding:30,color:MU}}>Inga roller än. Skapa en med "Ny roll".</div>}
+      </div>
+
+      {confirmDel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmDel(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Ta bort rollen "{confirmDel.name}"?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>
+              {usersWithRole(confirmDel.id)>0
+                ? `${usersWithRole(confirmDel.id)} användare har den här rollen. De blir utan roll (behåller bara ev. egna behörigheter).`
+                : "Detta går inte att ångra."}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmDel(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>del(confirmDel)}>Ta bort</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </Page>
+  );
+}
+
+// ─── Edit Role Page ───────────────────────────────────────────────────────────
+function EditRolePage({ role, roles, saveRoles, pop, toast$ }) {
+  const [f, setF] = useState(role ? {...role, permissions:{...role.permissions}} : { name:"", color:"#1B3A6B", permissions:{} });
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const togglePerm = k => setF(p=>({...p,permissions:{...p.permissions,[k]:!p.permissions?.[k]}}));
+  const COLORS = ["#1B3A6B","#CC1B2B","#2E7D32","#E65100","#6A1B9A","#00838F","#757575"];
+
+  const save = async () => {
+    if (!f.name.trim()) { toast$("Ge rollen ett namn","error"); return; }
+    if (f.id) {
+      await saveRoles((roles||[]).map(r=>r.id===f.id?f:r));
+      toast$("Roll uppdaterad","success");
+    } else {
+      await saveRoles([...(roles||[]), {...f, id:genId("role")}]);
+      toast$("Roll skapad","success");
+    }
+    pop();
+  };
+
+  // Gruppera behörigheter för tydlighet
+  const groups = [
+    { title:"Lager", keys:["canView","canAdd","canEdit","canDelete","canBulkEdit","canScan","canImport","canExport"] },
+    { title:"Försäljning", keys:["canSell","canUseCheckout","canPrintReceipt"] },
+    { title:"Reservationer", keys:["canViewReservations","canAddReservations","canEditReservations"] },
+    { title:"Logg & rapporter", keys:["canViewLog","canViewDashboard","canViewReports"] },
+    { title:"Administration", keys:["canManageSuppliers","canBackup","canManageUsers","canManageSettings"] },
+  ];
+
+  return (
+    <Page>
+      <TopBar title={role?"Redigera roll":"Ny roll"} onBack={pop} right={<Btn small onClick={save}><Icon name="check"/> Spara</Btn>} />
+      <div style={{padding:"14px 14px 60px"}}>
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Rollnamn</label>
+          <input type="text" value={f.name} onChange={e=>set("name",e.target.value)} placeholder="t.ex. Säljare"
+            style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"9px 12px",fontSize:14,fontWeight:600,marginTop:4,marginBottom:12}}/>
+          <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Färg</label>
+          <div style={{display:"flex",gap:8,marginTop:6}}>
+            {COLORS.map(c=>(
+              <button key={c} onClick={()=>set("color",c)} style={{width:30,height:30,borderRadius:7,background:c,border:f.color===c?`3px solid ${TX}`:`2px solid ${BD}`,cursor:"pointer"}}/>
+            ))}
+          </div>
+        </div>
+
+        {groups.map(g=>(
+          <div key={g.title} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:10}}>
+            <div style={{fontSize:12,fontWeight:800,color:B,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>{g.title}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {g.keys.map(key=>{
+                const perm = ALL_PERMISSIONS.find(p=>p.key===key);
+                if (!perm) return null;
+                const on = !!f.permissions?.[key];
+                return (
+                  <button key={key} onClick={()=>togglePerm(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:`1.5px solid ${on?B:BD}`,background:on?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+                    <div style={{width:34,height:20,borderRadius:10,background:on?B:BD,position:"relative",flexShrink:0,transition:"background .15s"}}>
+                      <div style={{position:"absolute",top:2,left:on?16:2,width:16,height:16,borderRadius:"50%",background:WH,transition:"left .15s"}}/>
+                    </div>
+                    <i className={`fa-solid ${perm.icon}`} style={{color:on?B:MU,width:16,textAlign:"center"}}/>
+                    <span style={{fontSize:13,fontWeight:600,color:on?TX:TM}}>{perm.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Page>
+  );
+}
+
 // ─── Edit User Page ───────────────────────────────────────────────────────────
-function EditUserPage({ user, users, saveUsers, pop, toast$ }) {
+function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
   // Lösenordsfältet är alltid tomt vid redigering — den lagrade hashen kan
   // inte (och ska inte) visas upp som klartext. Lämnas fältet tomt vid
   // sparning behålls det befintliga lösenordet oförändrat.
@@ -4559,17 +5032,41 @@ function EditUserPage({ user, users, saveUsers, pop, toast$ }) {
 
         {f.role==="user" && (
           <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:12}}>Behörigheter</div>
-            {ALL_PERMISSIONS.map(({key,label,icon})=>(
-              <div key={key} onClick={()=>togglePerm(key)}
-                style={{display:"flex",alignItems:"center",gap:12,padding:"12px 8px",borderRadius:8,cursor:"pointer",background:f.permissions?.[key]?B+"08":"transparent",marginBottom:4}}>
-                <div style={{width:32,height:32,borderRadius:8,background:f.permissions?.[key]?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:14,color:f.permissions?.[key]?B:MU}}/></div>
-                <span style={{flex:1,fontSize:14,fontWeight:500,color:f.permissions?.[key]?TX:MU}}>{label}</span>
-                <div style={{width:42,height:24,borderRadius:12,background:f.permissions?.[key]?B:"#ddd",position:"relative",transition:"background .2s",flexShrink:0}}>
-                  <div style={{position:"absolute",top:3,left:f.permissions?.[key]?20:3,width:18,height:18,borderRadius:"50%",background:WH,boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:10}}>Roll (färdigt behörighetspaket)</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+              <button onClick={()=>set("roleId",null)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${!f.roleId?B:BD}`,background:!f.roleId?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:12,height:12,borderRadius:3,background:MU,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:600,color:!f.roleId?TX:TM}}>Ingen roll — bara egna behörigheter nedan</span>
+              </button>
+              {(roles||[]).map(role=>(
+                <button key={role.id} onClick={()=>set("roleId",role.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${f.roleId===role.id?B:BD}`,background:f.roleId===role.id?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+                  <div style={{width:12,height:12,borderRadius:3,background:role.color||B,flexShrink:0}}/>
+                  <span style={{fontSize:13,fontWeight:600,color:f.roleId===role.id?TX:TM,flex:1}}>{role.name}</span>
+                  <span style={{fontSize:11,color:MU}}>{ALL_PERMISSIONS.filter(p=>role.permissions?.[p.key]).length} behörigheter</span>
+                </button>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:MU,marginBottom:4}}>Rollen ger en grunduppsättning behörigheter. Du kan ge extra behörigheter utöver rollen här under:</div>
+          </div>
+        )}
+
+        {f.role==="user" && (
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:12}}>{f.roleId?"Extra behörigheter (utöver rollen)":"Behörigheter"}</div>
+            {ALL_PERMISSIONS.map(({key,label,icon})=>{
+              const fromRole = f.roleId && (roles||[]).find(r=>r.id===f.roleId)?.permissions?.[key];
+              const on = f.permissions?.[key] || fromRole;
+              return (
+              <div key={key} onClick={()=>!fromRole&&togglePerm(key)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"12px 8px",borderRadius:8,cursor:fromRole?"default":"pointer",background:on?B+"08":"transparent",marginBottom:4,opacity:fromRole?0.7:1}}>
+                <div style={{width:32,height:32,borderRadius:8,background:on?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:14,color:on?B:MU}}/></div>
+                <span style={{flex:1,fontSize:14,fontWeight:500,color:on?TX:MU}}>{label}{fromRole&&<span style={{fontSize:10,color:B,marginLeft:6,fontWeight:700}}>(från roll)</span>}</span>
+                <div style={{width:42,height:24,borderRadius:12,background:on?B:"#ddd",position:"relative",transition:"background .2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:on?20:3,width:18,height:18,borderRadius:"50%",background:WH,boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .2s"}}/>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {f.role==="admin" && (
