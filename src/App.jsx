@@ -524,6 +524,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     { icon:"chart-line",   label:"Dashboard",      route:"dashboard",  show:(isAdmin||can("canViewDashboard")) },
     { icon:"chart-line",   label:"Rapporter",      route:"reports",    show:(isAdmin||can("canViewReports")) },
     { icon:"list",         label:"Säljlogg",       route:"saleslog",   show:(isAdmin||can("canViewLog")) },
+    { icon:"bookmark",     label:"Reservationer",  route:"reservations", show:(isAdmin||can("canViewReservations")) },
     { icon:"qrcode",       label:"Skanna",         route:"scan",       show:(isAdmin||can("canScan")) },
     { icon:"file-import",  label:"Importera",      route:"import",     show:(isAdmin||can("canImport")) },
     { icon:"layer-group",  label:"Massredigera",   route:"bulkedit",   show:(isAdmin||can("canBulkEdit")) },
@@ -884,6 +885,7 @@ function AppInner() {
           {current.name === "edituser"     && <EditUserPage     {...sharedProps} {...current.props} />}
           {current.name === "perms"        && <PermsPage        {...sharedProps} {...current.props} />}
           {current.name === "saleslog"     && <SalesLogPage     {...sharedProps} />}
+          {current.name === "reservations" && <ReservationsPage {...sharedProps} />}
           {current.name === "scan"         && <ScanPage         {...sharedProps} {...current.props} />}
           {current.name === "receipt"      && <ReceiptPage      {...sharedProps} {...current.props} />}
           {current.name === "qrlabels"     && <QrLabelsPage     {...sharedProps} {...current.props} />}
@@ -3067,9 +3069,10 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                     <ItemCard item={item} can={can} isAdmin={isAdmin}
                       onDetail={()=>push("detail",{item})}
                       onEdit={()=>push("edit",{item})}
-                      onSell={()=>push("sell",{item})}
+                      onSell={()=>push("sell",{item, maxQty: Math.max(0,(item.quantity||0)-(item.reservations?.length||0))})}
                       onAddToCart={()=>{ addToCart(item); toast$(`${item.name} tillagd i korgen`,"success"); }}
                       onDelete={()=>del(item.id)}
+                      onReserve={()=>push("detail",{item, openReserve:true})}
                     />
                   );
                 }
@@ -3335,12 +3338,20 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
-const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
+const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete, onReserve }) {
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
   const imgSrc = item.thumb || item.images?.[0] || (item.hasImages>0 ? `/api/img/${item.id}?v=${item.updatedAt||0}` : null);
   const freeQtyCard = Math.max(0, (item.quantity||0) - (item.reservations?.length||0));
   return (
-    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden"}}>
+    <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden",position:"relative"}}>
+
+      {/* Reservera-genväg i hörnet (visas om man får reservera och det finns lediga ex.) */}
+      {onReserve && (can("canAddReservations")||isAdmin) && freeQtyCard>0 && (
+        <button onClick={e=>{ e.stopPropagation(); onReserve(); }} title="Reservera"
+          style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:7,border:`1px solid ${AM}50`,background:AM+"12",color:AM,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,padding:0}}>
+          <i className="fa-solid fa-bookmark" style={{fontSize:13}}/>
+        </button>
+      )}
 
       {/* Topp: bild + (lagernr, namn, artikelnummer) */}
       <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
@@ -3418,12 +3429,129 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 }
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
-function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can, isAdmin, currentUser, push, pop, toast$ }) {
+// ─── Reservations Page — alla reservationer, grupperade per regnummer ─────────
+function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$ }) {
+  if (!isAdmin && !can("canViewReservations")) return <Page><TopBar title="Reservationer" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+  const [confirmUnreserve, setConfirmUnreserve] = useState(null);
+  const [search, setSearch] = useState("");
+
+  // Bygg en lista: en post per reservation, med tillhörande artikel
+  const allRes = [];
+  for (const it of items) {
+    for (const r of (it.reservations||[])) {
+      allRes.push({ ...r, item: it });
+    }
+  }
+  // Gruppera per regnummer
+  const groups = {};
+  for (const r of allRes) {
+    const key = r.regNumber || "—";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  }
+  // Filtrera på sök (regnummer eller kund)
+  let groupKeys = Object.keys(groups).sort();
+  if (search.trim()) {
+    const q = search.trim().toLowerCase();
+    groupKeys = groupKeys.filter(k =>
+      k.toLowerCase().includes(q) || groups[k].some(r => (r.customer||"").toLowerCase().includes(q))
+    );
+  }
+
+  const removeReservation = async (item, resId) => {
+    const updated = { ...item, reservations: (item.reservations||[]).filter(r=>r.id!==resId), updatedAt:Date.now() };
+    const res = await saveOneItem(updated);
+    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
+    setConfirmUnreserve(null);
+    toast$("Reservation borttagen","success");
+  };
+
+  return (
+    <Page>
+      <TopBar title="Reservationer" onBack={pop} subtitle={`${allRes.length} reservationer · ${groupKeys.length} bilar`} />
+      <div style={{padding:"14px 14px 40px"}}>
+        <div style={{marginBottom:14}}>
+          <div style={{position:"relative"}}>
+            <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
+            <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök regnummer eller kund…"
+              style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14}}/>
+          </div>
+        </div>
+
+        {allRes.length===0?(
+          <div style={{textAlign:"center",padding:50,color:MU}}>
+            <Icon name="bookmark" style={{fontSize:42,display:"block",margin:"0 auto 14px",color:BD}}/>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Inga reservationer än</div>
+            <div style={{fontSize:13}}>Reservera delar från en dels detaljsida eller direkt på korten.</div>
+          </div>
+        ):groupKeys.length===0?(
+          <div style={{textAlign:"center",padding:40,color:MU}}>Inga träffar på "{search}"</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {groupKeys.map(reg=>{
+              const list = groups[reg];
+              const customer = list.find(r=>r.customer)?.customer;
+              return (
+                <div key={reg} style={{background:WH,borderRadius:12,border:`1.5px solid ${AM}40`,overflow:"hidden"}}>
+                  {/* Bil-header */}
+                  <div style={{background:AM+"12",padding:"12px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${AM}25`}}>
+                    <span style={{background:AM,color:WH,borderRadius:6,padding:"4px 12px",fontSize:17,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
+                    {customer&&<span style={{fontSize:14,fontWeight:700,color:TX}}>{customer}</span>}
+                    <span style={{marginLeft:"auto",fontSize:12,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</span>
+                  </div>
+                  {/* Delar reserverade till denna bil */}
+                  <div style={{padding:"6px 14px 10px"}}>
+                    {list.map(r=>(
+                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${BD}40`}}>
+                        <div onClick={()=>push("detail",{item:r.item})} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                            {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 7px",fontSize:11,fontWeight:800}}>#{r.item.stockNumber}</span>}
+                            <span style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
+                          </div>
+                          {r.item.oem&&<div style={{fontSize:13,fontWeight:700,color:TX,fontFamily:"monospace"}}>{r.item.oem}</div>}
+                          {r.note&&<div style={{fontSize:12,color:TM,marginTop:2}}>{r.note}</div>}
+                          <div style={{fontSize:10,color:MU,marginTop:2}}>Reserverad av {r.by} · {new Date(r.ts).toLocaleDateString("sv-SE")}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:800,color:B}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</div>
+                          <div style={{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}}>
+                            <Btn small variant="ghost" onClick={()=>push("detail",{item:r.item})}><Icon name="eye"/></Btn>
+                            {(can("canEditReservations")||isAdmin)&&<Btn small variant="ghost" onClick={()=>setConfirmUnreserve({item:r.item, res:r})} style={{color:R}}><Icon name="xmark"/></Btn>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {confirmUnreserve&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmUnreserve(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Ta bort reservation?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Reservationen av <strong style={{color:TX}}>{confirmUnreserve.item.name}</strong> för <strong style={{color:TX}}>{confirmUnreserve.res.regNumber}</strong> tas bort.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmUnreserve(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>removeReservation(confirmUnreserve.item, confirmUnreserve.res.id)}>Ta bort</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </Page>
+  );
+}
+
+// ─── Detail Page ──────────────────────────────────────────────────────────────
+function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can, isAdmin, currentUser, push, pop, toast$, openReserve }) {
   // Get fresh item from store in case it was updated
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
-  const [showReserve, setShowReserve] = useState(false);
+  const [showReserve, setShowReserve] = useState(!!openReserve);
   const [resForm, setResForm] = useState({ regNumber:"", customer:"", note:"" });
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
   const [sellToReserved, setSellToReserved] = useState(null);
@@ -3540,6 +3668,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can
     <div style={{display:"flex",gap:6}}>
       <Btn small variant="ghost" onClick={shareLink}><Icon name="share-nodes"/></Btn>
       <Btn small variant="ghost" onClick={printProduct}><Icon name="print"/></Btn>
+      {(can("canAddReservations")||isAdmin)&&reservations.length<(item.quantity||0)&&<Btn small variant="ghost" onClick={()=>setShowReserve(true)}><Icon name="bookmark"/> Reservera</Btn>}
       {(can("canSell")||isAdmin)&&freeQty>0&&<Btn small variant="red" onClick={()=>push("sell",{item, maxQty:freeQty})}><Icon name="tag"/> Sälj</Btn>}
       {can("canEdit")&&<Btn small variant="ghost" onClick={()=>push("edit",{item})}><Icon name="pen"/></Btn>}
     </div>
@@ -3705,10 +3834,10 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can
                 <span style={{fontWeight:800,fontSize:14,color:TX}}>Reservationer</span>
                 {reservations.length>0&&<span style={{background:AM,color:WH,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>{reservations.length} av {item.quantity}</span>}
               </div>
-              {(can("canAddReservations")||isAdmin)&&reservations.length<(item.quantity||0)&&(
-                <Btn small variant="ghost" onClick={()=>setShowReserve(true)}><Icon name="plus"/> Reservera</Btn>
-              )}
             </div>
+            {reservations.length===0&&(
+              <div style={{fontSize:12,color:MU}}>Inga reservationer. Använd "Reservera" uppe i headern för att reservera ett exemplar åt en kund.</div>
+            )}
 
             {reservations.length>0&&(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
