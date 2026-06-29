@@ -3345,14 +3345,6 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
   return (
     <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden",position:"relative"}}>
 
-      {/* Reservera-genväg i hörnet (visas om man får reservera och det finns lediga ex.) */}
-      {onReserve && (can("canAddReservations")||isAdmin) && freeQtyCard>0 && (
-        <button onClick={e=>{ e.stopPropagation(); onReserve(); }} title="Reservera"
-          style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:7,border:`1px solid ${AM}50`,background:AM+"12",color:AM,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,padding:0}}>
-          <i className="fa-solid fa-bookmark" style={{fontSize:13}}/>
-        </button>
-      )}
-
       {/* Topp: bild + (lagernr, namn, artikelnummer) */}
       <div style={{display:"flex",gap:11,alignItems:"flex-start"}}>
         <div style={{flexShrink:0,width:62,height:62,borderRadius:9,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -3395,8 +3387,8 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
         <div style={{display:"flex",gap:4}}>
           {(can("canUseCheckout")||isAdmin)&&freeQtyCard>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
           {(can("canSell")||isAdmin)&&freeQtyCard>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
+          {onReserve&&(can("canAddReservations")||isAdmin)&&freeQtyCard>0&&<Btn variant="ghost" small onClick={onReserve} style={{color:AM}}><Icon name="bookmark"/></Btn>}
           {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
-          {can("canDelete")&&<Btn variant="ghost" small onClick={onDelete} style={{color:R}}><Icon name="trash"/></Btn>}
         </div>
       </div>
     </div>
@@ -3546,12 +3538,14 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
 }
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
-function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can, isAdmin, currentUser, push, pop, toast$, openReserve }) {
+function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, addToCart, can, isAdmin, currentUser, push, pop, toast$, openReserve }) {
   // Get fresh item from store in case it was updated
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
+  const isMobile = useIsMobile();
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
   const [showReserve, setShowReserve] = useState(!!openReserve);
+  const [confirmDel, setConfirmDel] = useState(false);
   const [resForm, setResForm] = useState({ regNumber:"", customer:"", note:"" });
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
   const [sellToReserved, setSellToReserved] = useState(null);
@@ -3605,6 +3599,15 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can
     if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
     setConfirmUnreserve(null);
     toast$("Reservation borttagen","success");
+  };
+
+  const doDelete = async () => {
+    const updated = await deleteOneItem(item.id);
+    if (updated) saveItems(updated);
+    else await saveItems(items.filter(i=>i.id!==item.id));
+    setConfirmDel(false);
+    toast$("Del borttagen","success");
+    pop();
   };
 
   const printProduct = () => {
@@ -3664,13 +3667,22 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can
   const [showShare, setShowShare] = useState(false);
   const [shareData, setShareData] = useState(null);
 
+  const canCart = (can("canUseCheckout")||isAdmin) && freeQty>0;
+  const canSellBtn = (can("canSell")||isAdmin) && freeQty>0;
+  const canReserveBtn = (can("canAddReservations")||isAdmin) && reservations.length<(item.quantity||0);
+  const canEditBtn = can("canEdit");
+  const canDeleteBtn = can("canDelete")||isAdmin;
+
   const right = (
-    <div style={{display:"flex",gap:6}}>
+    <div style={{display:"flex",gap:6,alignItems:"center"}}>
       <Btn small variant="ghost" onClick={shareLink}><Icon name="share-nodes"/></Btn>
       <Btn small variant="ghost" onClick={printProduct}><Icon name="print"/></Btn>
-      {(can("canAddReservations")||isAdmin)&&reservations.length<(item.quantity||0)&&<Btn small variant="ghost" onClick={()=>setShowReserve(true)}><Icon name="bookmark"/> Reservera</Btn>}
-      {(can("canSell")||isAdmin)&&freeQty>0&&<Btn small variant="red" onClick={()=>push("sell",{item, maxQty:freeQty})}><Icon name="tag"/> Sälj</Btn>}
-      {can("canEdit")&&<Btn small variant="ghost" onClick={()=>push("edit",{item})}><Icon name="pen"/></Btn>}
+      {canReserveBtn&&<Btn small variant="ghost" onClick={()=>setShowReserve(true)}><Icon name="bookmark"/>{!isMobile&&" Reservera"}</Btn>}
+      {canSellBtn&&<Btn small variant="red" onClick={()=>push("sell",{item, maxQty:freeQty})}><Icon name="tag"/>{!isMobile&&" Sälj"}</Btn>}
+      {canEditBtn&&<Btn small variant="ghost" onClick={()=>push("edit",{item})}><Icon name="pen"/></Btn>}
+      {/* På dator: kassa + ta bort också uppe. På mobil: dessa hamnar längst ner. */}
+      {!isMobile&&canCart&&<Btn small variant="blue" onClick={()=>{ addToCart(item); toast$(`${item.name} tillagd i korgen`,"success"); }}><Icon name="cart-shopping"/> Kassa</Btn>}
+      {!isMobile&&canDeleteBtn&&<Btn small variant="ghost" onClick={()=>setConfirmDel(true)} style={{color:R}}><Icon name="trash"/></Btn>}
     </div>
   );
 
@@ -3909,7 +3921,29 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can
           </button>
         </div>
 
+        {/* Mobil — kassa & ta bort längst ner (de nya knapparna) */}
+        {isMobile&&(canCart||canDeleteBtn)&&(
+          <div style={{display:"flex",gap:8,marginTop:16}}>
+            {canCart&&<Btn full variant="blue" onClick={()=>{ addToCart(item); toast$(`${item.name} tillagd i korgen`,"success"); }}><Icon name="cart-shopping"/> Lägg i kassa</Btn>}
+            {canDeleteBtn&&<Btn full variant="ghost" onClick={()=>setConfirmDel(true)} style={{color:R,borderColor:R+"40"}}><Icon name="trash"/> Ta bort</Btn>}
+          </div>
+        )}
+
       </div>
+
+      {/* Bekräfta ta bort del */}
+      {confirmDel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmDel(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Ta bort {item.name}?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Delen tas bort permanent från lagret. Detta går inte att ångra.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmDel(false)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={doDelete}>Ta bort</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal — lägg till reservation */}
       {showReserve&&(
