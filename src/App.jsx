@@ -971,6 +971,14 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
         note: note.trim(),
         soldBy: currentUser?.username||"Okänd",
         soldAt: now,
+        // Snapshot — gör att delen kan återskapas helt om man ångrar köpet
+        itemSnapshot: {
+          name:r.item.name, oem:r.item.oem, sku:r.item.sku, side:r.item.side,
+          stockNumber:r.item.stockNumber, category:r.item.category, condition:r.item.condition,
+          make:r.item.make, model:r.item.model, location:r.item.location, locationType:r.item.locationType,
+          regNumber:r.item.regNumber, price:r.item.price, costPrice:r.item.costPrice,
+          notes:r.item.notes, supplier:r.item.supplier,
+        },
       };
     });
 
@@ -1060,16 +1068,15 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
                 </div>
 
                 <div>
-                  <label style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",marginBottom:3}}>
-                    <span>Pris kr/st</span>
+                  <label style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",marginBottom:3,gap:2}}>
+                    <span>Pris/st</span>
                     <div style={{display:"flex",gap:2,background:BG,borderRadius:4,padding:1}}>
-                      <button onClick={()=>updateRow(r.key,"priceMode","incl")} style={{padding:"2px 6px",borderRadius:3,border:"none",background:(r.priceMode||"incl")==="incl"?WH:"transparent",color:(r.priceMode||"incl")==="incl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>ink</button>
-                      <button onClick={()=>updateRow(r.key,"priceMode","excl")} style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.priceMode==="excl"?WH:"transparent",color:r.priceMode==="excl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>exk</button>
+                      <button onClick={()=>updateRow(r.key,"priceMode","incl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:(r.priceMode||"incl")==="incl"?WH:"transparent",color:(r.priceMode||"incl")==="incl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>ink</button>
+                      <button onClick={()=>updateRow(r.key,"priceMode","excl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:r.priceMode==="excl"?WH:"transparent",color:r.priceMode==="excl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>exk</button>
                     </div>
                   </label>
                   <input type="number" min="0" value={r.unitPrice} onChange={e=>updateRow(r.key,"unitPrice",Math.max(0,Number(e.target.value)))}
                     style={{width:"100%",padding:"7px 8px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:13,fontWeight:priceChanged?700:400,color:priceChanged?B:TX,background:priceChanged?B+"08":WH}}/>
-                  <div style={{fontSize:9,color:MU,marginTop:2}}>{(r.priceMode||"incl")==="incl"?"Priset anges inkl. moms":"Priset anges exkl. moms"}</div>
                 </div>
 
                 <div>
