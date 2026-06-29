@@ -454,7 +454,15 @@ function Field({ label, value, half }) {
 }
 
 // ─── Page shell (handles scroll itself) ──────────────────────────────────────
-function Page({ children, style:sx, noAnim, maxWidth }) {
+function Page({ children, style:sx, noAnim, maxWidth, flush }) {
+  // flush = sidan sköter sin egen scroll/layout (t.ex. kassan med fast fot)
+  if (flush) {
+    return (
+      <div className={noAnim?"":"page"} style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",overflow:"hidden",background:BG,...sx}}>
+        {children}
+      </div>
+    );
+  }
   return (
     <div className={noAnim?"":"page"} style={{position:"absolute",inset:0,overflowY:"auto",WebkitOverflowScrolling:"touch",background:BG,...sx}}>
       <div style={maxWidth?{maxWidth,margin:"0 auto",width:"100%"}:{width:"100%"}}>
@@ -1016,11 +1024,11 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     : [];
 
   return (
-    <Page>
+    <Page flush noAnim>
       <TopBar title="Kassa" onBack={pop} subtitle="Varukorg & betalning" right={
         rows.length>0 ? <button onClick={()=>setConfirmClear(true)} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:12}}>Töm korg</button> : null
       }/>
-      <div style={{padding:"14px 14px 180px"}}>
+      <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 14px 20px"}}>
 
         {/* Empty cart */}
         {rows.length===0 && (
@@ -1181,9 +1189,9 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
         )}
       </div>
 
-      {/* Sticky checkout bar */}
+      {/* Fast fot — sitter alltid längst ner (flex-barn, inte fixed) */}
       {rows.length>0 && (
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))"}}>
+        <div style={{flexShrink:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 20px rgba(0,0,0,.08)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:12,color:MU}}>{rows.reduce((a,r)=>a+r.qty,0)} delar · {rows.length} artiklar</div>
             <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:B}}>{grandTotal.toLocaleString("sv-SE")} kr</div>
