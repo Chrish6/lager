@@ -3338,6 +3338,7 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
 const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, onDelete }) {
   const location = [item.locationType, item.location].filter(Boolean).join(" ");
   const imgSrc = item.thumb || item.images?.[0] || (item.hasImages>0 ? `/api/img/${item.id}?v=${item.updatedAt||0}` : null);
+  const freeQtyCard = Math.max(0, (item.quantity||0) - (item.reservations?.length||0));
   return (
     <div onClick={onDetail} style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,boxShadow:SH,padding:12,cursor:"pointer",display:"flex",flexDirection:"column",gap:8,height:188,boxSizing:"border-box",overflow:"hidden"}}>
 
@@ -3347,8 +3348,9 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
           {imgSrc?<img src={imgSrc} alt="" loading="lazy" decoding="async" width={62} height={62} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU,fontSize:18}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
             {item.stockNumber&&<span style={{background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber}</span>}
+            {item.reservations?.length>0&&<span style={{background:AM,color:WH,borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",gap:3}}><i className="fa-solid fa-bookmark" style={{fontSize:9}}/>{item.reservations.length} res</span>}
           </div>
           <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
           {item.oem&&<div style={{fontSize:15,fontWeight:800,color:TX,fontFamily:"monospace",letterSpacing:.3,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.15}}>{item.oem}</div>}
@@ -3380,8 +3382,8 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
           <span style={{fontSize:10,color:MU,marginLeft:2}}>st</span>
         </div>
         <div style={{display:"flex",gap:4}}>
-          {(can("canUseCheckout")||isAdmin)&&item.quantity>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
-          {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
+          {(can("canUseCheckout")||isAdmin)&&freeQtyCard>0&&<Btn variant="blue" small onClick={onAddToCart}><Icon name="cart-shopping"/></Btn>}
+          {(can("canSell")||isAdmin)&&freeQtyCard>0&&<Btn variant="ghost" small onClick={onSell}><Icon name="tag"/></Btn>}
           {can("canEdit")&&<Btn variant="ghost" small onClick={onEdit}><Icon name="pen"/></Btn>}
           {can("canDelete")&&<Btn variant="ghost" small onClick={onDelete} style={{color:R}}><Icon name="trash"/></Btn>}
         </div>
@@ -3416,13 +3418,22 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 }
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
-function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ }) {
+function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, can, isAdmin, currentUser, push, pop, toast$ }) {
   // Get fresh item from store in case it was updated
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const [idx, setIdx] = useState(0);
   const [showMore, setShowMore] = useState(false);
+  const [showReserve, setShowReserve] = useState(false);
+  const [resForm, setResForm] = useState({ regNumber:"", customer:"", note:"" });
+  const [confirmUnreserve, setConfirmUnreserve] = useState(null);
+  const [sellToReserved, setSellToReserved] = useState(null);
   const touchRef = useRef(null);
   const bilInfoUrl = item.regNumber ? `https://www.biluppgifter.se/fordon/${item.regNumber.replace(/\s/g,"")}` : null;
+
+  // Reservationer ligger på artikeln. Antal som går att sälja fritt =
+  // antal minus antal reservationer (reserverade exemplar är skyddade).
+  const reservations = item.reservations || [];
+  const freeQty = Math.max(0, (item.quantity||0) - reservations.length);
 
   // Bygg cachebara bild-URL:er — webbläsaren cachar dem, hämtas aldrig om.
   // En URL per bild: /api/img/<id>/<index>?v=<tid>
@@ -3438,6 +3449,34 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
     if (dx<-40) setIdx(i=>Math.min(imgs.length-1,i+1));
     if (dx>40)  setIdx(i=>Math.max(0,i-1));
     touchRef.current = null;
+  };
+
+  // ── Reservationer ──────────────────────────────────────────────────────────
+  const addReservation = async () => {
+    if (!resForm.regNumber.trim()) { toast$("Ange registreringsnummer","error"); return; }
+    if (reservations.length >= (item.quantity||0)) { toast$("Alla exemplar är redan reserverade","error"); return; }
+    const newRes = {
+      id: genId("res"),
+      regNumber: resForm.regNumber.trim().toUpperCase(),
+      customer: resForm.customer.trim(),
+      note: resForm.note.trim(),
+      by: currentUser?.username || "Okänd",
+      ts: Date.now(),
+    };
+    const updated = { ...item, reservations:[...reservations, newRes], updatedAt:Date.now() };
+    const res = await saveOneItem(updated);
+    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
+    setShowReserve(false);
+    setResForm({ regNumber:"", customer:"", note:"" });
+    toast$("Reservation tillagd","success");
+  };
+
+  const removeReservation = async (resId) => {
+    const updated = { ...item, reservations: reservations.filter(r=>r.id!==resId), updatedAt:Date.now() };
+    const res = await saveOneItem(updated);
+    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
+    setConfirmUnreserve(null);
+    toast$("Reservation borttagen","success");
   };
 
   const printProduct = () => {
@@ -3501,7 +3540,7 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
     <div style={{display:"flex",gap:6}}>
       <Btn small variant="ghost" onClick={shareLink}><Icon name="share-nodes"/></Btn>
       <Btn small variant="ghost" onClick={printProduct}><Icon name="print"/></Btn>
-      {(can("canSell")||isAdmin)&&item.quantity>0&&<Btn small variant="red" onClick={()=>push("sell",{item})}><Icon name="tag"/> Sälj</Btn>}
+      {(can("canSell")||isAdmin)&&freeQty>0&&<Btn small variant="red" onClick={()=>push("sell",{item, maxQty:freeQty})}><Icon name="tag"/> Sälj</Btn>}
       {can("canEdit")&&<Btn small variant="ghost" onClick={()=>push("edit",{item})}><Icon name="pen"/></Btn>}
     </div>
   );
@@ -3657,6 +3696,45 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
           </div>
         </div>
 
+        {/* ── Reservationer ── */}
+        {(can("canViewReservations")||can("canAddReservations")||isAdmin)&&(
+          <div style={{background:WH,borderRadius:10,border:`1.5px solid ${reservations.length>0?AM+"60":BD}`,padding:"12px 14px",marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:reservations.length>0?10:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <i className="fa-solid fa-bookmark" style={{color:reservations.length>0?AM:MU,fontSize:15}}/>
+                <span style={{fontWeight:800,fontSize:14,color:TX}}>Reservationer</span>
+                {reservations.length>0&&<span style={{background:AM,color:WH,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>{reservations.length} av {item.quantity}</span>}
+              </div>
+              {(can("canAddReservations")||isAdmin)&&reservations.length<(item.quantity||0)&&(
+                <Btn small variant="ghost" onClick={()=>setShowReserve(true)}><Icon name="plus"/> Reservera</Btn>
+              )}
+            </div>
+
+            {reservations.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {reservations.map(r=>(
+                  <div key={r.id} style={{background:AM+"0C",border:`1px solid ${AM}30`,borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:r.customer||r.note?5:0}}>
+                      <span style={{background:AM,color:WH,borderRadius:5,padding:"2px 9px",fontSize:14,fontWeight:800,letterSpacing:.5,fontFamily:"monospace"}}>{r.regNumber}</span>
+                      {r.customer&&<span style={{fontSize:13,fontWeight:600,color:TX}}>{r.customer}</span>}
+                      <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                        {(can("canSell")||isAdmin)&&<Btn small variant="red" onClick={()=>setSellToReserved(r)}><Icon name="tag"/> Sälj</Btn>}
+                        {(can("canEditReservations")||isAdmin)&&<Btn small variant="ghost" onClick={()=>setConfirmUnreserve(r)} style={{color:R}}><Icon name="xmark"/></Btn>}
+                      </div>
+                    </div>
+                    {r.note&&<div style={{fontSize:12,color:TM,marginBottom:3}}>{r.note}</div>}
+                    <div style={{fontSize:10,color:MU}}>Reserverad av {r.by} · {new Date(r.ts).toLocaleDateString("sv-SE")}</div>
+                  </div>
+                ))}
+                {freeQty>0
+                  ? <div style={{fontSize:11,color:MU,marginTop:2}}>{freeQty} av {item.quantity} kan säljas fritt — resten är reserverade.</div>
+                  : <div style={{fontSize:11,color:AM,fontWeight:600,marginTop:2}}>Alla exemplar är reserverade — kan bara säljas till reserverad kund.</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+
         {/* Ursprungsbil */}
         {(item.make||item.model||item.regNumber)&&(
           <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
@@ -3703,6 +3781,73 @@ function DetailPage({ item: initialItem, items, can, isAdmin, push, pop, toast$ 
         </div>
 
       </div>
+
+      {/* Modal — lägg till reservation */}
+      {showReserve&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setShowReserve(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:380,width:"100%"}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Reservera del</div>
+            <div style={{fontSize:12,color:MU,marginBottom:16}}>Reservera ett exemplar åt en kund. Det skyddas från försäljning tills det säljs till kunden eller av-reserveras.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Registreringsnummer *</label>
+                <input type="text" value={resForm.regNumber} onChange={e=>setResForm(f=>({...f,regNumber:e.target.value.toUpperCase()}))} placeholder="ABC123" autoFocus
+                  style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"10px 12px",fontSize:15,fontWeight:700,letterSpacing:1,marginTop:4,fontFamily:"monospace"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Kund (valfritt)</label>
+                <input type="text" value={resForm.customer} onChange={e=>setResForm(f=>({...f,customer:e.target.value}))} placeholder="Namn eller företag"
+                  style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"9px 12px",fontSize:14,marginTop:4}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Notering (valfritt)</label>
+                <input type="text" value={resForm.note} onChange={e=>setResForm(f=>({...f,note:e.target.value}))} placeholder="t.ex. hämtas på fredag"
+                  style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"9px 12px",fontSize:14,marginTop:4}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:18}}>
+              <Btn full variant="ghost" onClick={()=>setShowReserve(false)}>Avbryt</Btn>
+              <Btn full onClick={addReservation}><Icon name="bookmark"/> Reservera</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bekräfta av-reservation */}
+      {confirmUnreserve&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmUnreserve(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Ta bort reservation?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Reservationen för <strong style={{color:TX}}>{confirmUnreserve.regNumber}</strong>{confirmUnreserve.customer?` (${confirmUnreserve.customer})`:""} tas bort. Delen blir säljbar för alla igen.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmUnreserve(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>removeReservation(confirmUnreserve.id)}>Ta bort</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sälj till reserverad kund */}
+      {sellToReserved&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setSellToReserved(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:360,width:"100%"}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Sälj till reserverad kund</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>
+              Säljer till <strong style={{color:TX}}>{sellToReserved.regNumber}</strong>{sellToReserved.customer?` — ${sellToReserved.customer}`:""}. Reservationen tas bort när försäljningen är klar.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setSellToReserved(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>{
+                const remaining = reservations.filter(r=>r.id!==sellToReserved.id);
+                const updated = { ...item, reservations: remaining, updatedAt:Date.now() };
+                saveOneItem(updated).then(res=>{ if(res) saveItems(res); else saveItems(items.map(i=>i.id===item.id?updated:i)); });
+                push("sell",{ item:updated, maxQty:1, presetBuyer: sellToReserved.customer||sellToReserved.regNumber });
+                setSellToReserved(null);
+              }}><Icon name="tag"/> Fortsätt till försäljning</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
@@ -4137,9 +4282,10 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 }
 
 // ─── Sell Page ────────────────────────────────────────────────────────────────
-function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push, pop, toast$ }) {
+function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push, pop, toast$, maxQty, presetBuyer }) {
+  const cap = maxQty != null ? maxQty : (item.quantity || 0);
   const [qty, setQty] = useState(1);
-  const [buyer, setBuyer] = useState("");
+  const [buyer, setBuyer] = useState(presetBuyer || "");
   const VAT_RATE = 0.25; // 25% moms
   // unitPrice hålls som pris INKL moms (källan). De två rutorna skriver båda hit.
   const [unitPrice, setUnitPrice] = useState(item.price);
@@ -4215,7 +4361,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
 
   const sell = async () => {
     const it = items.find(i=>i.id===item.id);
-    if (!it||it.quantity-qty<0) { toast$("Otillräckligt i lager!","error"); return; }
+    if (!it || qty > cap || it.quantity-qty<0) { toast$("Otillräckligt i lager!","error"); return; }
     const saleEntry = {
       id: genId("sale"),
       itemId: item.id,
@@ -4308,7 +4454,10 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
 
         {/* Pris & rabatt */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,marginBottom:12,display:"flex",flexDirection:"column",gap:12}}>
-          <div><Inp label="Antal" type="number" min="1" value={qty} onChange={e=>setQty(Math.max(1,Number(e.target.value)))}/></div>
+          <div>
+            <Inp label="Antal" type="number" min="1" max={cap} value={qty} onChange={e=>setQty(Math.max(1,Math.min(cap,Number(e.target.value))))}/>
+            {maxQty != null && maxQty < (item.quantity||0) && <div style={{fontSize:11,color:AM,fontWeight:600,marginTop:3}}>Max {cap} st kan säljas — resten är reserverade.</div>}
+          </div>
 
           {/* Två prisrutor — inkl och exkl moms, räknar ut varandra automatiskt */}
           <div>
@@ -4364,7 +4513,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
         </div>
 
         {/* Summary */}
-        {qty>0&&qty<=item.quantity&&(
+        {qty>0&&qty<=cap&&(
           <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:14,marginBottom:14}}>
             {priceChanged&&(
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:MU,marginBottom:3}}>
