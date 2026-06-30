@@ -93,9 +93,39 @@ function dbDel(key) {
 
 const stats = { started: Date.now(), requests: 0, errors: 0 };
 
+// ── Enhetsspårning (i minnet) ─────────────────────────────────────────────────
+// Spårar varje aktiv enhet per IP: senaste aktivitet, antal anrop, inloggad användare.
+const devices = new Map(); // ip -> { ip, firstSeen, lastSeen, count, user, userAgent }
+// Live-flöde av senaste händelser (köp, ändringar m.m.) som frontend rapporterar.
+const liveFeed = []; // { type, description, user, ip, ts }
+const MAX_FEED = 60;
+
+function clientIp(req) {
+  let ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
+  if (ip.includes(",")) ip = ip.split(",")[0].trim();
+  return ip.replace(/^::ffff:/, "").replace(/^::1$/, "127.0.0.1");
+}
+
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
+
+// Spåra alla API-anrop (men inte statiska filer eller admin-pollning)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    const ip = clientIp(req);
+    const now = Date.now();
+    let d = devices.get(ip);
+    if (!d) { d = { ip, firstSeen: now, lastSeen: now, count: 0, user: null, userAgent: req.headers["user-agent"] || "" }; devices.set(ip, d); }
+    d.lastSeen = now;
+    d.count++;
+    // Användarnamn skickas med som header från frontend om inloggad
+    const u = req.headers["x-lager-user"];
+    if (u) d.user = decodeURIComponent(u);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "dist")));
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -380,24 +410,84 @@ app.get("/admin/api/status", async (req, res) => {
   const ips = Object.values(os.networkInterfaces()).flat()
     .filter(i => i.family === "IPv4" && !i.internal).map(i => i.address);
 
-  const [itemsRow, usersRow, salesRow] = await Promise.all([
-    dbGet("ow:items"), dbGet("ow:users"), dbGet("ow:sales")
+  const [itemsRow, usersRow, salesRow, activityRow] = await Promise.all([
+    dbGet("ow:items"), dbGet("ow:users"), dbGet("ow:sales"), dbGet("ow:activitylog")
   ]);
   const items = itemsRow ? JSON.parse(itemsRow.value) : [];
   const users = usersRow ? JSON.parse(usersRow.value) : [];
   const sales = salesRow ? JSON.parse(salesRow.value) : [];
+  const activity = activityRow ? JSON.parse(activityRow.value) : [];
+
+  // Försäljning idag och denna vecka
+  const now = Date.now();
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  const weekAgo = now - 7*864e5;
+  const salesToday = sales.filter(s => (s.soldAt||0) >= startOfDay.getTime());
+  const salesWeek = sales.filter(s => (s.soldAt||0) >= weekAgo);
+  const lowStock = items.filter(i => (i.quantity||0) <= 3).length;
+  const reservedCount = items.reduce((a,i)=>a+((i.reservations&&i.reservations.length)||0),0);
+  const totalQty = items.reduce((a,i)=>a+(i.quantity||0),0);
+
+  // Aktiva enheter senaste 5 minuterna
+  const activeWindow = now - 5*60*1000;
+  const activeDevices = [...devices.values()].filter(d => d.lastSeen >= activeWindow).length;
 
   res.json({
     uptime: `${h}t ${m}m ${s}s`,
+    uptimeSeconds: uptimeS,
     requests: stats.requests, errors: stats.errors,
     dbSize: (dbSize/1024).toFixed(1)+" KB",
+    dbSizeBytes: dbSize,
     items: items.length, users: users.length, sales: sales.length,
     ips, port: PORT,
     totalValue: items.reduce((a,i)=>a+(i.price||0)*(i.quantity||0),0),
-    salesTotal: sales.reduce((a,s)=>a+s.total,0),
+    salesTotal: sales.reduce((a,s)=>a+(s.total||0),0),
+    salesTodayCount: salesToday.length,
+    salesTodayValue: salesToday.reduce((a,s)=>a+(s.total||0),0),
+    salesWeekCount: salesWeek.length,
+    salesWeekValue: salesWeek.reduce((a,s)=>a+(s.total||0),0),
+    lowStock, reservedCount, totalQty,
+    activeDevices,
+    activityCount: activity.length,
     recentReqs: [],
   });
 });
+
+// Anslutna enheter + live-flöde (för admin-panelen)
+app.get("/admin/api/devices", (req, res) => {
+  const now = Date.now();
+  const list = [...devices.values()]
+    .sort((a,b) => b.lastSeen - a.lastSeen)
+    .map(d => ({
+      ip: d.ip,
+      user: d.user,
+      count: d.count,
+      lastSeenAgo: Math.floor((now - d.lastSeen)/1000),
+      firstSeen: d.firstSeen,
+      active: (now - d.lastSeen) < 5*60*1000,
+      device: guessDevice(d.userAgent),
+    }));
+  res.json({ devices: list, feed: liveFeed.slice(0, MAX_FEED) });
+});
+
+// Frontend rapporterar en händelse (köp, ändring m.m.) till live-flödet
+app.post("/admin/api/event", (req, res) => {
+  const { type, description, user } = req.body || {};
+  if (!type || !description) return res.status(400).json({ error: "type och description krävs" });
+  liveFeed.unshift({ type, description, user: user||null, ip: clientIp(req), ts: Date.now() });
+  if (liveFeed.length > MAX_FEED) liveFeed.length = MAX_FEED;
+  res.json({ ok: true });
+});
+
+function guessDevice(ua) {
+  if (!ua) return "Okänd";
+  if (/iphone|ipad|ipod/i.test(ua)) return "iPhone/iPad";
+  if (/android/i.test(ua)) return "Android";
+  if (/windows/i.test(ua)) return "Windows";
+  if (/macintosh|mac os/i.test(ua)) return "Mac";
+  if (/linux/i.test(ua)) return "Linux";
+  return "Okänd";
+}
 
 app.post("/admin/api/restart", (req, res) => {
   res.json({ ok: true });
@@ -406,42 +496,194 @@ app.post("/admin/api/restart", (req, res) => {
 
 // Manuell trigger för automatisk backup (test)
 app.get("/admin/api/backup-now", async (req, res) => {
-  await runBackup();
-  res.json({ ok: true, message: "Backup skapad i backups-mappen" });
+  try {
+    await runBackup();
+    res.json({ ok: true, message: "Backup skapad i backups-mappen" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.get("/admin", (req, res) => {
   res.send(`<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Lager Admin</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:#F0F2F5;color:#1a1a2e}.header{background:linear-gradient(135deg,#1B3A6B,#CC1B2B);color:#fff;padding:20px 24px;display:flex;align-items:center;justify-content:space-between}.title{font-size:20px;font-weight:800}.container{max-width:900px;margin:0 auto;padding:24px 16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}.card{background:#fff;border-radius:12px;padding:16px;border:1px solid #e2e8f0}.label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px}.value{font-size:28px;font-weight:800;color:#1B3A6B}.green{color:#22c55e}.section{background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:16px;overflow:hidden}.sh{padding:14px 18px;border-bottom:1px solid #f1f5f9;font-weight:700;font-size:13px;background:#fafbfc}.sb{padding:16px 18px}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f8fafc;font-size:13px}.row:last-child{border:none}.chip{background:#1B3A6B15;color:#1B3A6B;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;font-family:monospace;margin:2px;display:inline-block;cursor:pointer}.btn{padding:9px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:none}.btn-red{background:#CC1B2B;color:#fff}.app-link{display:inline-flex;align-items:center;gap:6px;background:#1B3A6B;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px}</style>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#EEF1F5;color:#1a1a2e;padding-bottom:40px}
+.header{background:linear-gradient(135deg,#1B3A6B,#CC1B2B);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.title{font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px}
+.dot{width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 0 0 rgba(52,211,153,.7);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.6)}70%{box-shadow:0 0 0 8px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+.container{max-width:1000px;margin:0 auto;padding:20px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.card{background:#fff;border-radius:12px;padding:15px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.value{font-size:26px;font-weight:800;color:#1B3A6B;line-height:1.1}
+.value.green{color:#16a34a}.value.amber{color:#d97706}.value.red{color:#CC1B2B}
+.sub{font-size:11px;color:#94a3b8;margin-top:3px}
+.section{background:#fff;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.sh{padding:13px 18px;border-bottom:1px solid #eef1f5;font-weight:700;font-size:13px;background:#fafbfc;display:flex;align-items:center;justify-content:space-between}
+.sb{padding:14px 18px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f5f7fa;font-size:13px}
+.row:last-child{border:none}
+.chip{background:#1B3A6B15;color:#1B3A6B;padding:5px 11px;border-radius:6px;font-size:12px;font-weight:700;font-family:monospace;margin:2px;display:inline-block;cursor:pointer}
+.chip:hover{background:#1B3A6B25}
+.btn{padding:9px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:6px}
+.btn-red{background:#CC1B2B;color:#fff}.btn-blue{background:#1B3A6B;color:#fff}.btn-ghost{background:#fff;color:#1B3A6B;border:1.5px solid #d7dee8}
+.btn:active{transform:translateY(1px)}
+.app-link{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.2);color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px}
+.dev{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f5f7fa;font-size:13px}
+.dev:last-child{border:none}
+.dev .ip{font-family:monospace;font-weight:700;color:#1B3A6B}
+.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
+.badge.on{background:#dcfce7;color:#16a34a}.badge.off{background:#f1f5f9;color:#94a3b8}
+.feed-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #f5f7fa;font-size:13px;align-items:flex-start}
+.feed-item:last-child{border:none}
+.feed-ico{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px}
+.muted{color:#94a3b8;font-size:11px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1B3A6B;color:#fff;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:600;opacity:0;transition:opacity .3s;z-index:50}
+.toast.show{opacity:1}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+.empty{text-align:center;color:#94a3b8;padding:24px;font-size:13px}
+</style>
 </head><body>
-<div class="header"><div class="title">Lager Admin</div><a href="/" class="app-link">Öppna app</a></div>
+<div class="header">
+  <div class="title"><span class="dot"></span> Lager Admin</div>
+  <a href="/" class="app-link">Öppna app →</a>
+</div>
 <div class="container">
-<div class="grid">
-  <div class="card"><div class="label">Drifttid</div><div class="value" id="uptime">—</div></div>
-  <div class="card"><div class="label">Artiklar</div><div class="value" id="items">—</div></div>
-  <div class="card"><div class="label">Försäljningar</div><div class="value" id="sales">—</div></div>
-  <div class="card"><div class="label">Lagervärde</div><div class="value green" id="val">—</div></div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Drifttid</div><div class="value" id="uptime">—</div></div>
+    <div class="card"><div class="label">Aktiva enheter</div><div class="value green" id="activeDev">—</div><div class="sub">senaste 5 min</div></div>
+    <div class="card"><div class="label">Artiklar</div><div class="value" id="items">—</div><div class="sub" id="totalQty"></div></div>
+    <div class="card"><div class="label">Lagervärde</div><div class="value green" id="val">—</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Försäljning idag</div><div class="value" id="salesToday">—</div><div class="sub" id="salesTodayVal"></div></div>
+    <div class="card"><div class="label">Senaste 7 dagar</div><div class="value" id="salesWeek">—</div><div class="sub" id="salesWeekVal"></div></div>
+    <div class="card"><div class="label">Lågt lager</div><div class="value amber" id="lowStock">—</div><div class="sub">≤ 3 i lager</div></div>
+    <div class="card"><div class="label">Reserverade</div><div class="value" id="reserved">—</div></div>
+  </div>
+
+  <div class="section">
+    <div class="sh">Serverstyrning</div>
+    <div class="sb">
+      <div class="controls">
+        <button class="btn btn-blue" onclick="doBackup(this)"><span>💾</span> Skapa backup nu</button>
+        <button class="btn btn-red" onclick="doRestart(this)"><span>🔄</span> Starta om servern</button>
+        <button class="btn btn-ghost" onclick="load()"><span>↻</span> Uppdatera</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Backup sparas i backup-mappen. Omstart tar några sekunder — appen kommer tillbaka automatiskt.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span>Anslutna enheter</span><span class="muted" id="devCount"></span></div>
+    <div class="sb" id="devices"><div class="empty">Laddar…</div></div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><span>Live-aktivitet</span><span class="muted">uppdateras automatiskt</span></div>
+    <div class="sb" id="feed"><div class="empty">Ingen aktivitet ännu</div></div>
+  </div>
+
+  <div class="section">
+    <div class="sh">Serverinfo</div>
+    <div class="sb">
+      <div class="row"><span>Databasstorlek</span><span id="db">—</span></div>
+      <div class="row"><span>Antal anrop sedan start</span><span id="reqs">—</span></div>
+      <div class="row"><span>Fel sedan start</span><span id="errs">—</span></div>
+      <div class="row"><span>Användare</span><span id="users">—</span></div>
+      <div class="row"><span>Totalt antal försäljningar</span><span id="salesTotal">—</span></div>
+      <div class="row"><span>Nätverksadresser</span><div id="ips" style="text-align:right"></div></div>
+    </div>
+  </div>
+
 </div>
-<div class="section"><div class="sh">Serverinfo</div><div class="sb">
-  <div class="row"><span>Databasstorlek</span><span id="db">—</span></div>
-  <div class="row"><span>Nätverksadresser</span><div id="ips"></div></div>
-</div></div>
-</div>
+<div class="toast" id="toast"></div>
 <script>
-async function load() {
-  const d = await fetch('/admin/api/status').then(r=>r.json());
-  document.getElementById('uptime').textContent = d.uptime;
-  document.getElementById('items').textContent = d.items;
-  document.getElementById('sales').textContent = d.sales;
-  document.getElementById('val').textContent = d.totalValue.toLocaleString('sv-SE')+' kr';
-  document.getElementById('db').textContent = d.dbSize;
-  document.getElementById('ips').innerHTML = d.ips.map(ip=>
-    \`<span class="chip" onclick="navigator.clipboard.writeText('http://\${ip}:\${d.port}')" title="Klicka för att kopiera">http://\${ip}:\${d.port}</span>\`
-  ).join('');
+const kr = n => (n||0).toLocaleString('sv-SE')+' kr';
+const feedStyle = {
+  sale:{bg:'#dcfce7',c:'#16a34a',i:'🏷️'}, add:{bg:'#dbeafe',c:'#1B3A6B',i:'➕'},
+  edit:{bg:'#fef3c7',c:'#d97706',i:'✏️'}, delete:{bg:'#fee2e2',c:'#CC1B2B',i:'🗑️'},
+  reserve:{bg:'#fef3c7',c:'#d97706',i:'🔖'}, reverse:{bg:'#f1f5f9',c:'#64748b',i:'↩️'},
+  login:{bg:'#e0e7ff',c:'#4f46e5',i:'🔑'}
+};
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+function ago(s){if(s<60)return s+'s sedan';if(s<3600)return Math.floor(s/60)+'m sedan';return Math.floor(s/3600)+'t sedan';}
+
+async function load(){
+  try{
+    const d = await fetch('/admin/api/status').then(r=>r.json());
+    document.getElementById('uptime').textContent = d.uptime;
+    document.getElementById('activeDev').textContent = d.activeDevices;
+    document.getElementById('items').textContent = d.items;
+    document.getElementById('totalQty').textContent = (d.totalQty||0)+' st totalt';
+    document.getElementById('val').textContent = kr(d.totalValue);
+    document.getElementById('salesToday').textContent = d.salesTodayCount;
+    document.getElementById('salesTodayVal').textContent = kr(d.salesTodayValue);
+    document.getElementById('salesWeek').textContent = d.salesWeekCount;
+    document.getElementById('salesWeekVal').textContent = kr(d.salesWeekValue);
+    document.getElementById('lowStock').textContent = d.lowStock;
+    document.getElementById('reserved').textContent = d.reservedCount;
+    document.getElementById('db').textContent = d.dbSize;
+    document.getElementById('reqs').textContent = d.requests;
+    document.getElementById('errs').textContent = d.errors;
+    document.getElementById('users').textContent = d.users;
+    document.getElementById('salesTotal').textContent = d.sales;
+    document.getElementById('ips').innerHTML = d.ips.map(ip=>
+      '<span class="chip" onclick="navigator.clipboard.writeText(\\'http://'+ip+':'+d.port+'\\');toast(\\'Adress kopierad\\')">http://'+ip+':'+d.port+'</span>'
+    ).join('');
+  }catch(e){}
 }
-load(); setInterval(load, 5000);
+
+async function loadDevices(){
+  try{
+    const d = await fetch('/admin/api/devices').then(r=>r.json());
+    const dev = document.getElementById('devices');
+    document.getElementById('devCount').textContent = d.devices.length+' totalt';
+    if(!d.devices.length){ dev.innerHTML='<div class="empty">Inga enheter har anslutit ännu</div>'; }
+    else dev.innerHTML = d.devices.map(x=>
+      '<div class="dev"><span class="ip">'+x.ip+'</span>'+
+      '<span class="badge '+(x.active?'on':'off')+'">'+(x.active?'aktiv':'inaktiv')+'</span>'+
+      '<span style="color:#64748b">'+(x.device||'')+'</span>'+
+      '<span style="margin-left:auto;text-align:right">'+
+      (x.user?'<strong>'+x.user+'</strong>':'<span class="muted">ej inloggad</span>')+
+      '<div class="muted">'+ago(x.lastSeenAgo)+' · '+x.count+' anrop</div></span></div>'
+    ).join('');
+
+    const feed = document.getElementById('feed');
+    if(!d.feed.length){ feed.innerHTML='<div class="empty">Ingen aktivitet ännu</div>'; }
+    else feed.innerHTML = d.feed.map(f=>{
+      const s = feedStyle[f.type]||{bg:'#f1f5f9',c:'#64748b',i:'•'};
+      const t = new Date(f.ts);
+      return '<div class="feed-item"><div class="feed-ico" style="background:'+s.bg+';color:'+s.c+'">'+s.i+'</div>'+
+        '<div style="flex:1"><div>'+f.description+'</div>'+
+        '<div class="muted">'+(f.user?f.user+' · ':'')+(f.ip||'')+' · '+t.toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'})+'</div></div></div>';
+    }).join('');
+  }catch(e){}
+}
+
+async function doBackup(btn){
+  btn.disabled=true; const o=btn.innerHTML; btn.innerHTML='<span>⏳</span> Skapar…';
+  try{ const r=await fetch('/admin/api/backup-now').then(r=>r.json()); toast(r.ok?'Backup skapad':'Backup misslyckades'); }
+  catch(e){ toast('Backup misslyckades'); }
+  btn.disabled=false; btn.innerHTML=o;
+}
+async function doRestart(btn){
+  if(!confirm('Starta om servern? Appen är otillgänglig några sekunder.'))return;
+  btn.disabled=true; btn.innerHTML='<span>⏳</span> Startar om…';
+  try{ await fetch('/admin/api/restart',{method:'POST'}); }catch(e){}
+  toast('Servern startar om…');
+  setTimeout(()=>{ let n=0; const iv=setInterval(async()=>{ try{ await fetch('/admin/api/status'); clearInterval(iv); location.reload(); }catch(e){ if(++n>20){clearInterval(iv);} } },1000); },1500);
+}
+
+load(); loadDevices();
+setInterval(load, 5000);
+setInterval(loadDevices, 4000);
 </script></body></html>`);
 });
 
