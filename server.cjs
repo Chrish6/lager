@@ -315,7 +315,7 @@ app.post("/api/restore", async (req, res) => {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ error: "Ingen data mottogs (body tom)" });
     }
-    const { items = [], sales = null, users = null, settings = null, suppliers = [], mode = "replace", first = false } = req.body;
+    const { items = [], sales = null, users = null, settings = null, suppliers = [], roles = null, lists = null, activitylog = null, favorites = null, mode = "replace", first = false } = req.body;
 
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: "items är inte en lista" });
@@ -354,6 +354,10 @@ app.post("/api/restore", async (req, res) => {
         if (users) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:users',?,strftime('%s','now'))", [JSON.stringify(users)]);
         if (settings) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:settings',?,strftime('%s','now'))", [JSON.stringify(settings)]);
         if (suppliers && suppliers.length) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:suppliers',?,strftime('%s','now'))", [JSON.stringify(suppliers)]);
+        if (roles) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:roles',?,strftime('%s','now'))", [JSON.stringify(roles)]);
+        if (lists) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:lists',?,strftime('%s','now'))", [JSON.stringify(lists)]);
+        if (activitylog) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:activitylog',?,strftime('%s','now'))", [JSON.stringify(activitylog)]);
+        if (favorites) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:favorites',?,strftime('%s','now'))", [JSON.stringify(favorites)]);
         db.run("COMMIT", (err) => err ? reject(err) : resolve());
       });
     });
@@ -467,7 +471,7 @@ function getBackupDir() {
 }
 
 // ── Excel-backup — välorganiserad fil med två flikar ─────────────────────────
-async function writeExcelBackup(filePath, items, sales) {
+async function writeExcelBackup(filePath, items, sales, extra = {}) {
   const ExcelJS = require("exceljs");
   const wb = new ExcelJS.Workbook();
   const BLUE = "FF1B3A6B", LIGHT = "FFEEF2F8", WHITE = "FFFFFFFF";
@@ -563,13 +567,80 @@ async function writeExcelBackup(filePath, items, sales) {
   zebra(ws2, sortedSales.length+1, 16);
   [2,6,7,8,9,10,11,12].forEach(c => ws2.getColumn(c).alignment = { horizontal: "center" });
 
+  // ── Flik 3: Reservationer ──
+  const ws3 = wb.addWorksheet("Reservationer");
+  ws3.columns = [
+    { header: "Regnummer", width: 13 },
+    { header: "Kund", width: 20 },
+    { header: "Lagernummer", width: 13 },
+    { header: "Artikelnummer", width: 16 },
+    { header: "Namn", width: 18 },
+    { header: "Sida", width: 10 },
+    { header: "Pris (kr)", width: 11 },
+    { header: "Notering", width: 24 },
+    { header: "Reserverad av", width: 14 },
+    { header: "Datum", width: 13 },
+  ];
+  const resRows = [];
+  for (const it of items) {
+    for (const r of (it.reservations||[])) {
+      resRows.push({ r, it });
+    }
+  }
+  resRows.sort((a,b)=>(a.r.regNumber||"").localeCompare(b.r.regNumber||""));
+  for (const { r, it } of resRows) {
+    const d = r.ts ? new Date(r.ts).toISOString().slice(0,10) : "";
+    ws3.addRow([
+      r.regNumber||"", r.customer||"", it.stockNumber||"", it.oem||"", it.name||"", it.side||"",
+      it.price||0, r.note||"", r.by||"", d,
+    ]);
+  }
+  styleHeader(ws3, 10);
+  zebra(ws3, resRows.length+1, 10);
+  [1,3,7,10].forEach(c => ws3.getColumn(c).alignment = { horizontal: "center" });
+
+  // ── Flik 4: Aktivitetslogg ──
+  const ws4 = wb.addWorksheet("Aktivitetslogg");
+  ws4.columns = [
+    { header: "Datum & tid", width: 18 },
+    { header: "Typ", width: 14 },
+    { header: "Beskrivning", width: 50 },
+    { header: "Användare", width: 14 },
+  ];
+  const typeLabels = { sale:"Försäljning", add:"Tillagd", edit:"Redigerad", delete:"Borttagen", reserve:"Reserverad", reverse:"Ångrad", import:"Import" };
+  const log = (extra.activitylog||[]);
+  for (const e of log) {
+    const d = e.ts ? new Date(e.ts) : null;
+    const datum = d ? `${d.toISOString().slice(0,10)} ${d.toTimeString().slice(0,5)}` : "";
+    ws4.addRow([ datum, typeLabels[e.type]||e.type||"", e.description||"", e.user||"" ]);
+  }
+  styleHeader(ws4, 4);
+  zebra(ws4, log.length+1, 4);
+
+  // ── Flik 5: Roller ──
+  const ws5 = wb.addWorksheet("Roller");
+  ws5.columns = [
+    { header: "Roll", width: 18 },
+    { header: "Antal behörigheter", width: 18 },
+    { header: "Behörigheter", width: 70 },
+  ];
+  const roles = (extra.roles||[]);
+  for (const role of roles) {
+    const perms = Object.keys(role.permissions||{}).filter(k=>role.permissions[k]);
+    ws5.addRow([ role.name||"", perms.length, perms.join(", ") ]);
+  }
+  styleHeader(ws5, 3);
+  zebra(ws5, roles.length+1, 3);
+  ws5.getColumn(2).alignment = { horizontal: "center" };
+
   await wb.xlsx.writeFile(filePath);
 }
 
 async function runBackup() {
   try {
-    const [itemsRow, salesRow, usersRow, settingsRow, suppliersRow] = await Promise.all([
-      dbGet("ow:items"), dbGet("ow:sales"), dbGet("ow:users"), dbGet("ow:settings"), dbGet("ow:suppliers")
+    const [itemsRow, salesRow, usersRow, settingsRow, suppliersRow, rolesRow, listsRow, activityRow, favoritesRow] = await Promise.all([
+      dbGet("ow:items"), dbGet("ow:sales"), dbGet("ow:users"), dbGet("ow:settings"), dbGet("ow:suppliers"),
+      dbGet("ow:roles"), dbGet("ow:lists"), dbGet("ow:activitylog"), dbGet("ow:favorites")
     ]);
     const items = itemsRow ? JSON.parse(itemsRow.value) : [];
     // Samla ihop bilderna så backupen blir komplett
@@ -583,15 +654,20 @@ async function runBackup() {
         itemsWithImages.push(it);
       }
     }
+    const parse = (row, def) => { try { return row ? JSON.parse(row.value) : def; } catch { return def; } };
     const data = {
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
       auto: true,
       items: itemsWithImages,
-      sales: salesRow ? JSON.parse(salesRow.value) : [],
-      users: usersRow ? JSON.parse(usersRow.value) : [],
-      settings: settingsRow ? JSON.parse(settingsRow.value) : null,
-      suppliers: suppliersRow ? JSON.parse(suppliersRow.value) : [],
+      sales: parse(salesRow, []),
+      users: parse(usersRow, []),
+      settings: parse(settingsRow, null),
+      suppliers: parse(suppliersRow, []),
+      roles: parse(rolesRow, []),
+      lists: parse(listsRow, null),
+      activitylog: parse(activityRow, []),
+      favorites: parse(favoritesRow, []),
     };
     const stamp = new Date().toISOString().slice(0,10);
     const BACKUP_DIR = getBackupDir();
@@ -601,7 +677,7 @@ async function runBackup() {
 
     // ── Excel-backup (välorganiserad, två flikar) ──
     try {
-      await writeExcelBackup(path.join(BACKUP_DIR, `auto_backup_${stamp}.xlsx`), items, data.sales);
+      await writeExcelBackup(path.join(BACKUP_DIR, `auto_backup_${stamp}.xlsx`), itemsWithImages, data.sales, { activitylog: data.activitylog, roles: data.roles });
       console.log(`[backup] Excel-backup skapad`);
     } catch (e) {
       console.error("[backup] Excel misslyckades:", e.message);
