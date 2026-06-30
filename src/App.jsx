@@ -29,6 +29,26 @@ class ErrorBoundary extends React.Component {
 // localhost eller via en IP-adress på nätverket.
 const API = "/api";
 
+// Nuvarande inloggad användare (sätts av appen) — skickas med som header så att
+// admin-panelen kan visa vem som är inloggad på varje enhet.
+let CURRENT_USERNAME = null;
+function setCurrentUsername(name) { CURRENT_USERNAME = name || null; }
+function authHeaders(base = {}) {
+  const h = { ...base };
+  if (CURRENT_USERNAME) h["x-lager-user"] = encodeURIComponent(CURRENT_USERNAME);
+  return h;
+}
+// Rapportera en händelse till admin-panelens live-flöde (bästa-försök, blockerar inget).
+function reportEvent(type, description) {
+  try {
+    fetch(`/admin/api/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, description, user: CURRENT_USERNAME }),
+    }).catch(()=>{});
+  } catch {}
+}
+
 // ── Universell utskrift — fungerar i Electron, webbläsare och mobil ───────────
 function printHtml(html) {
   // Metod 1: dold iframe (fungerar bäst i Electron)
@@ -79,13 +99,13 @@ function makeThumbnail(dataUrl) {
 }
 
 async function sget(k) {
-  try { const r = await fetch(`${API}/${k}`).then(r=>r.json()); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  try { const r = await fetch(`${API}/${k}`, { headers: authHeaders() }).then(r=>r.json()); return r ? JSON.parse(r.value) : null; } catch { return null; }
 }
 async function sset(k,v) {
   try {
     const res = await fetch(`${API}/${k}`, {
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers: authHeaders({"Content-Type":"application/json"}),
       body: JSON.stringify({value:JSON.stringify(v)})
     });
     if (!res.ok) {
@@ -794,6 +814,7 @@ function AppInner() {
 
   const logActivity = useCallback(async (type, description, extra={}) => {
     const entry = { id:genId("log"), type, description, ...extra, ts:Date.now() };
+    reportEvent(type, description); // skicka även till admin-panelens live-flöde
     setActivityLog(prev => {
       const next = [entry, ...prev].slice(0,500);
       sset("ow:activitylog", next);
@@ -834,6 +855,7 @@ function AppInner() {
   );
 
   const currentUser = session ? users.find(u=>u.id===session) : null;
+  useEffect(() => { setCurrentUsername(currentUser?.username || null); }, [currentUser?.username]);
   const isAdmin = currentUser?.role === "admin";
   const can = p => {
     if (!currentUser) return p==="canView";
@@ -2929,6 +2951,8 @@ function LoginPage({ users, saveUsers, setSession, push, pop, toast$ }) {
 
     saveSession(match.id);
     setSession(match.id);
+    setCurrentUsername(match.username);
+    reportEvent("login", `${match.username} loggade in`);
     pop();
     toast$(`Välkommen, ${match.username}!`,"success");
     setLoading(false);
