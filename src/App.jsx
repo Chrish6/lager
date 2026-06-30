@@ -225,6 +225,7 @@ const ALL_PERMISSIONS = [
   { key:"canViewReservations", label:"Visa reservationer", icon:"fa-bookmark" },
   { key:"canAddReservations",  label:"Lägg till reservationer", icon:"fa-square-plus" },
   { key:"canEditReservations", label:"Ändra reservationer", icon:"fa-pen-to-square" },
+  { key:"canViewActivityLog", label:"Visa aktivitetslogg", icon:"fa-clock-rotate-left" },
   { key:"canManageUsers", label:"Hantera användare", icon:"fa-users" },
   { key:"canManageSettings", label:"Ändra inställningar", icon:"fa-sliders" },
 ];
@@ -537,6 +538,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     { icon:"chart-line",   label:"Rapporter",      route:"reports",    show:(isAdmin||can("canViewReports")) },
     { icon:"list",         label:"Säljlogg",       route:"saleslog",   show:(isAdmin||can("canViewLog")) },
     { icon:"bookmark",     label:"Reservationer",  route:"reservations", show:(isAdmin||can("canViewReservations")) },
+    { icon:"clock-rotate-left", label:"Aktivitetslogg", route:"activitylog", show:(isAdmin||can("canViewActivityLog")) },
     { icon:"qrcode",       label:"Skanna",         route:"scan",       show:(isAdmin||can("canScan")) },
     { icon:"file-import",  label:"Importera",      route:"import",     show:(isAdmin||can("canImport")) },
     { icon:"layer-group",  label:"Massredigera",   route:"bulkedit",   show:(isAdmin||can("canBulkEdit")) },
@@ -921,7 +923,7 @@ function AppInner() {
 
 
 // ─── Checkout Page ────────────────────────────────────────────────────────────
-function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, saveSales, currentUser, isAdmin, can, push, pop, toast$ }) {
+function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, saveSales, currentUser, isAdmin, can, push, pop, toast$, logActivity }) {
   const [rows, setRows] = useState(() =>
     cart.map(r => ({ ...r, key: r.item.id + "-" + Date.now() }))
   );
@@ -1027,6 +1029,7 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     }
     saveItems(latestItems);
     await saveSales([...saleEntries, ...(sales||[])]);
+    logActivity&&logActivity("sale", `Kassaköp: ${saleEntries.reduce((a,e)=>a+e.qty,0)} delar för ${grandTotal.toLocaleString("sv-SE")} kr (${buyer.trim()||"Okänd"})`, { user: currentUser?.username });
     clearCart();
 
     toast$(`Kassa klar — ${grandTotal.toLocaleString("sv-SE")} kr`, "success");
@@ -2144,38 +2147,94 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
 }
 
 // ─── Activity Log Page ────────────────────────────────────────────────────────
-function ActivityLogPage({ activityLog, isAdmin, pop }) {
+function ActivityLogPage({ activityLog, users, can, isAdmin, currentUser, pop }) {
+  if (!isAdmin && !can("canViewActivityLog")) return <Page><TopBar title="Aktivitetslogg" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [filter, setFilter] = useState("all");
-  const types = { sale:{l:"Försäljning",c:GR}, item_add:{l:"Tillagd",c:B}, item_edit:{l:"Redigerad",c:AM}, item_delete:{l:"Borttagen",c:R}, import:{l:"Import",c:TM}, login:{l:"Inloggning",c:MU} };
-  const log = (activityLog||[]).filter(e=>filter==="all"||e.type===filter);
+  const [userFilter, setUserFilter] = useState("all");
+  const [search, setSearch] = useState("");
+
+  const types = {
+    sale:    { l:"Försäljning", c:GR, icon:"tag" },
+    add:     { l:"Tillagd",      c:B,  icon:"plus" },
+    edit:    { l:"Redigerad",    c:AM, icon:"pen" },
+    delete:  { l:"Borttagen",    c:R,  icon:"trash" },
+    reserve: { l:"Reserverad",   c:AM, icon:"bookmark" },
+    reverse: { l:"Ångrad",       c:MU, icon:"rotate-left" },
+    import:  { l:"Import",       c:TM, icon:"file-import" },
+  };
+
+  let log = (activityLog||[]);
+  if (filter!=="all") log = log.filter(e=>e.type===filter);
+  if (userFilter!=="all") log = log.filter(e=>e.user===userFilter);
+  if (search.trim()) { const q=search.toLowerCase(); log = log.filter(e=>(e.description||"").toLowerCase().includes(q)||(e.user||"").toLowerCase().includes(q)); }
+
+  const logUsers = ["all", ...new Set((activityLog||[]).map(e=>e.user).filter(Boolean))];
   const fmt = ts => { const d=new Date(ts); return d.toLocaleDateString("sv-SE",{day:"numeric",month:"short"})+" "+d.toLocaleTimeString("sv-SE",{hour:"2-digit",minute:"2-digit"}); };
+
+  // Gruppera per dag för tydlighet
+  const byDay = {};
+  for (const e of log) {
+    const day = new Date(e.ts).toLocaleDateString("sv-SE",{weekday:"long",day:"numeric",month:"long"});
+    if (!byDay[day]) byDay[day]=[];
+    byDay[day].push(e);
+  }
 
   return (
     <Page>
-      <TopBar title="Aktivitetslogg" onBack={pop} subtitle="Systemhändelser"/>
+      <TopBar title="Aktivitetslogg" onBack={pop} subtitle={`${log.length} händelser`}/>
       <div style={{padding:"14px 14px 60px"}}>
-        <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+        {/* Sök */}
+        <div style={{position:"relative",marginBottom:10}}>
+          <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
+          <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök i loggen…"
+            style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"9px 12px 9px 34px",fontSize:14,boxSizing:"border-box"}}/>
+        </div>
+
+        {/* Typ-filter */}
+        <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4}}>
           <button onClick={()=>setFilter("all")} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter==="all"?B:BD}`,background:filter==="all"?B:WH,color:filter==="all"?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>Alla</button>
           {Object.entries(types).map(([k,{l}])=>(
             <button key={k} onClick={()=>setFilter(k)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter===k?B:BD}`,background:filter===k?B:WH,color:filter===k?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>{l}</button>
           ))}
         </div>
 
-        {log.length===0?<div style={{textAlign:"center",padding:40,color:MU}}>Ingen aktivitet att visa.</div>:
-          log.map(e=>{
-            const t = types[e.type]||{l:e.type,c:MU};
-            return (
-              <div key={e.id} style={{background:WH,borderRadius:8,border:`1px solid ${BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:t.c,marginTop:5,flexShrink:0}}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{e.description}</div>
-                  {e.user&&<div style={{fontSize:11,color:MU}}>av {e.user}</div>}
-                </div>
-                <div style={{fontSize:11,color:MU,flexShrink:0}}>{fmt(e.ts)}</div>
-              </div>
-            );
-          })
-        }
+        {/* Användar-filter (om fler än en användare loggats) */}
+        {logUsers.length>2&&(
+          <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+            {logUsers.map(u=>(
+              <button key={u} onClick={()=>setUserFilter(u)} style={{flexShrink:0,padding:"5px 12px",borderRadius:20,border:`1.5px solid ${userFilter===u?AM:BD}`,background:userFilter===u?AM:WH,color:userFilter===u?WH:TM,fontWeight:600,fontSize:11,cursor:"pointer"}}>{u==="all"?"Alla användare":u}</button>
+            ))}
+          </div>
+        )}
+
+        {log.length===0?(
+          <div style={{textAlign:"center",padding:50,color:MU}}>
+            <Icon name="clock-rotate-left" style={{fontSize:42,display:"block",margin:"0 auto 14px",color:BD}}/>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Ingen aktivitet att visa</div>
+            <div style={{fontSize:13}}>Försäljningar, ändringar och reservationer dyker upp här.</div>
+          </div>
+        ):(
+          Object.entries(byDay).map(([day,entries])=>(
+            <div key={day} style={{marginBottom:18}}>
+              <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>{day}</div>
+              {entries.map(e=>{
+                const t = types[e.type]||{l:e.type,c:MU,icon:"circle"};
+                return (
+                  <div key={e.id} style={{background:WH,borderRadius:8,border:`1px solid ${BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <div style={{width:28,height:28,borderRadius:7,background:t.c+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <i className={`fa-solid fa-${t.icon}`} style={{color:t.c,fontSize:12}}/>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,lineHeight:1.35}}>{e.description}</div>
+                      {e.user&&<div style={{fontSize:11,color:MU,marginTop:1}}>av {e.user}</div>}
+                    </div>
+                    <div style={{fontSize:11,color:MU,flexShrink:0,whiteSpace:"nowrap"}}>{new Date(e.ts).toLocaleTimeString("sv-SE",{hour:"2-digit",minute:"2-digit"})}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ))
+        )}
       </div>
     </Page>
   );
@@ -2474,7 +2533,7 @@ function SuppliersPage({ suppliers, saveSuppliers, items, pop, toast$, can, isAd
 }
 
 // ─── Backup Page ──────────────────────────────────────────────────────────────
-function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, setItems, setSales, setSettings, setSuppliers, pop, toast$, can, isAdmin }) {
+function BackupPage({ items, sales, users, settings, suppliers, roles, lists, activityLog, favorites, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, saveRoles, saveLists, setItems, setSales, setSettings, setSuppliers, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBackup")) return <Page><TopBar title="Backup" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [restoring, setRestoring] = useState(false);
   const fileRef = useRef(null);
@@ -2490,7 +2549,7 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
         itemsWithImages.push(it);
       }
     }
-    const data = { version:3, exportedAt:new Date().toISOString(), items: itemsWithImages, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers };
+    const data = { version:4, exportedAt:new Date().toISOString(), items: itemsWithImages, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers, roles, lists, activitylog: activityLog, favorites };
     const json = JSON.stringify(data, null, 2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([json],{type:"application/json"}));
@@ -2525,6 +2584,10 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
             users: isFirst ? (data.users || []) : null,
             settings: isFirst ? (data.settings || null) : null,
             suppliers: isFirst ? (data.suppliers || []) : null,
+            roles: isFirst ? (data.roles || null) : null,
+            lists: isFirst ? (data.lists || null) : null,
+            activitylog: isFirst ? (data.activitylog || null) : null,
+            favorites: isFirst ? (data.favorites || null) : null,
           }),
         });
         if (!res.ok) {
@@ -2542,8 +2605,12 @@ function BackupPage({ items, sales, users, settings, suppliers, saveItems, saveS
       if (data.sales) setSales?.(data.sales);
       if (data.settings) setSettings?.(data.settings);
       if (data.suppliers) setSuppliers?.(data.suppliers);
+      if (data.roles) saveRoles?.(data.roles);
+      if (data.lists) saveLists?.(data.lists);
 
-      toast$(`Klart! ${finalItems.length} delar återställda`,"success");
+      toast$(`Klart! ${finalItems.length} delar återställda — laddar om…`,"success");
+      // Ladda om så allt (roller, listor, logg, användare) säkert syns
+      setTimeout(()=>window.location.reload(), 1200);
     } catch(e) {
       toast$("Fel: "+e.message,"error");
     }
@@ -2665,6 +2732,8 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
             {icon:"file-export",label:"Importera",  route:"import",      show:isAdmin||can("canAdd")},
             {icon:"chart-line",label:"Rapporter",   route:"reports",     show:isAdmin||can("canViewReports")},
             {icon:"chart-line",label:"Säljlogg",    route:"saleslog",    show:isAdmin||can("canViewLog")},
+            {icon:"bookmark",  label:"Reservationer", route:"reservations", show:isAdmin||can("canViewReservations")},
+            {icon:"clock-rotate-left",label:"Aktivitetslogg", route:"activitylog", show:isAdmin||can("canViewActivityLog")},
             {icon:"pen",       label:"Massredigera", route:"bulkedit",   show:isAdmin},
             {icon:"truck",     label:"Leverantörer", route:"suppliers",  show:isAdmin},
             {icon:"rotate",    label:"Backup",       route:"backup",     show:isAdmin},
@@ -2953,6 +3022,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               {icon:"chart-line",    label:"Rapporter",      route:"reports",     show:isAdmin||can("canViewReports")},
               {icon:"list",          label:"Säljlogg",       route:"saleslog",    show:isAdmin||can("canViewLog")},
               {icon:"bookmark",      label:"Reservationer",  route:"reservations",show:isAdmin||can("canViewReservations")},
+              {icon:"clock-rotate-left", label:"Aktivitetslogg", route:"activitylog", show:isAdmin||can("canViewActivityLog")},
               {icon:"qrcode",        label:"Skanna",         route:"scan",        show:isAdmin||can("canScan")},
               {icon:"file-import",   label:"Importera",      route:"import",      show:isAdmin||can("canImport")},
               {icon:"layer-group",   label:"Massredigera",   route:"bulkedit",    show:isAdmin||can("canBulkEdit")},
@@ -3578,7 +3648,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
 }
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
-function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, addToCart, can, isAdmin, currentUser, push, pop, toast$, openReserve }) {
+function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, addToCart, can, isAdmin, currentUser, push, pop, toast$, openReserve, logActivity }) {
   // Get fresh item from store in case it was updated
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const isMobile = useIsMobile();
@@ -3630,6 +3700,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
     if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
     setShowReserve(false);
     setResForm({ regNumber:"", customer:"", note:"" });
+    logActivity&&logActivity("reserve", `Reserverade ${item.name}${item.stockNumber?` (#${item.stockNumber})`:""} åt ${newRes.regNumber}${newRes.customer?` (${newRes.customer})`:""}`, { user: currentUser?.username });
     toast$("Reservation tillagd","success");
   };
 
@@ -3646,6 +3717,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
     if (updated) saveItems(updated);
     else await saveItems(items.filter(i=>i.id!==item.id));
     setConfirmDel(false);
+    logActivity&&logActivity("delete", `Tog bort ${item.name}${item.stockNumber?` (#${item.stockNumber})`:""}`, { user: currentUser?.username });
     toast$("Del borttagen","success");
     pop();
   };
@@ -4232,7 +4304,7 @@ const G2 = ({children}) => <div style={{display:"flex",gap:10,marginBottom:12}}>
 const H = ({children}) => <div style={{flex:1,minWidth:0}}>{children}</div>;
 
 // ─── Edit Page ────────────────────────────────────────────────────────────────
-function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser }) {
+function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser, logActivity }) {
   const CATS = lists?.categories||CATEGORIES, CONDS = lists?.conditions||CONDITIONS, SIDS = lists?.sides||SIDES, LOCTYPES = lists?.locationTypes||LOCATION_TYPES;
   const nextStockNumber = () => {
     const used = new Set(items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
@@ -4353,6 +4425,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
       else await saveItems([...items,payload]);
       toast$(f.id?"Uppdaterad":"Tillagd","success");
     }
+    logActivity&&logActivity(f.id?"edit":"add", `${f.id?"Redigerade":"La till"} ${payload.name}${payload.stockNumber?` (#${payload.stockNumber})`:""}`, { user: currentUser?.username, itemName:payload.name, stockNumber:payload.stockNumber });
     pop();
   };
 
@@ -4510,7 +4583,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 }
 
 // ─── Sell Page ────────────────────────────────────────────────────────────────
-function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push, pop, toast$, maxQty, presetBuyer }) {
+function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push, pop, toast$, maxQty, presetBuyer, logActivity }) {
   const cap = maxQty != null ? maxQty : (item.quantity || 0);
   const [qty, setQty] = useState(1);
   const [buyer, setBuyer] = useState(presetBuyer || "");
@@ -4638,6 +4711,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       else await saveItems(items.map(i=>i.id===item.id?updatedItem:i));
     }
     await saveSales([saleEntry,...(sales||[])]);
+    logActivity&&logActivity("sale", `Sålde ${qty} × ${item.name}${item.stockNumber?` (#${item.stockNumber})`:""} för ${total.toLocaleString("sv-SE")} kr`, { user: currentUser?.username, itemName:item.name, stockNumber:item.stockNumber });
     toast$(`Sålde ${qty} × ${item.name} — ${total.toLocaleString("sv-SE")} kr`,"success");
     push("receipt",{sale:saleEntry});
   };
@@ -4781,7 +4855,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
 
 
 // ─── Sales Log Page ───────────────────────────────────────────────────────────
-function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin, currentUser, push, pop, toast$ }) {
+function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin, currentUser, push, pop, toast$, logActivity }) {
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("all");
   const [confirmReverse, setConfirmReverse] = useState(null);
@@ -4828,6 +4902,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
       else await saveItems([...items, restored]);
     }
     await saveSales((sales||[]).filter(x=>x.id!==s.id));
+    logActivity&&logActivity("reverse", `Ångrade försäljning av ${s.itemName}${s.itemStockNumber?` (#${s.itemStockNumber})`:""}`, { user: currentUser?.username });
     toast$("Försäljning ångrad — delen är tillbaka i lagret","success");
     setConfirmReverse(null);
   };
@@ -5315,7 +5390,7 @@ function EditRolePage({ role, roles, saveRoles, pop, toast$ }) {
     { title:"Lager", keys:["canView","canAdd","canEdit","canDelete","canBulkEdit","canScan","canImport","canExport"] },
     { title:"Försäljning", keys:["canSell","canUseCheckout","canPrintReceipt"] },
     { title:"Reservationer", keys:["canViewReservations","canAddReservations","canEditReservations"] },
-    { title:"Logg & rapporter", keys:["canViewLog","canViewDashboard","canViewReports"] },
+    { title:"Logg & rapporter", keys:["canViewLog","canViewActivityLog","canViewDashboard","canViewReports"] },
     { title:"Administration", keys:["canManageSuppliers","canBackup","canManageUsers","canManageSettings"] },
   ];
 
