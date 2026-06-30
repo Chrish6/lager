@@ -846,6 +846,12 @@ function AppInner() {
   // Must be before any early returns (Rules of Hooks)
   const isMobile = useIsMobile();
 
+  // Synka inloggat användarnamn för API-headers (måste ligga före tidiga returns)
+  useEffect(() => {
+    const u = session ? (users.find(x=>x.id===session)?.username || null) : null;
+    setCurrentUsername(u);
+  }, [session, users]);
+
   if (!loaded) return (
     <div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <style>{CSS}</style>
@@ -855,7 +861,6 @@ function AppInner() {
   );
 
   const currentUser = session ? users.find(u=>u.id===session) : null;
-  useEffect(() => { setCurrentUsername(currentUser?.username || null); }, [currentUser?.username]);
   const isAdmin = currentUser?.role === "admin";
   const can = p => {
     if (!currentUser) return p==="canView";
