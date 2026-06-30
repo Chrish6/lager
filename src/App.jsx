@@ -2348,75 +2348,131 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
 }
 function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBulkEdit")) return <Page><TopBar title="Massredigering" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+  const [mode, setMode] = useState("edit"); // "edit" | "delete"
   const [selected, setSelected] = useState(new Set());
   const [field, setField] = useState("category");
   const [value, setValue] = useState("");
+  const [locType, setLocType] = useState(""); // för placering: vald placeringstyp
   const [search, setSearch] = useState("");
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const toggle = id => setSelected(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  const filtered = items.filter(i => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.regNumber,i.location,i.make,i.model].some(f=>f?.toLowerCase().includes(q));
+  });
   const selAll = () => setSelected(new Set(filtered.map(i=>i.id)));
-  const filtered = items.filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.sku.toLowerCase().includes(search.toLowerCase()));
 
   const FIELDS = [
     {k:"category", l:"Kategori", opts:lists?.categories||CATEGORIES},
     {k:"condition", l:"Skick", opts:lists?.conditions||CONDITIONS},
+    {k:"side", l:"Sida", opts:lists?.sides||SIDES},
     {k:"supplier", l:"Leverantör", opts:null},
     {k:"location", l:"Placering", opts:null},
   ];
   const currentField = FIELDS.find(f=>f.k===field);
+  const LOCTYPES = lists?.locationTypes||LOCATION_TYPES;
 
   const apply = async () => {
     if (!value||selected.size===0) return;
-    const updated = items.map(i => selected.has(i.id) ? {...i,[field]:value,updatedAt:Date.now()} : i);
+    const updated = items.map(i => {
+      if (!selected.has(i.id)) return i;
+      if (field==="location") return {...i, location:value, locationType:locType||i.locationType, updatedAt:Date.now()};
+      return {...i,[field]:value,updatedAt:Date.now()};
+    });
     await saveItems(updated);
     toast$(`${selected.size} artiklar uppdaterade`,"success");
-    setSelected(new Set()); setConfirmBulk(false); setValue("");
+    setSelected(new Set()); setConfirmBulk(false); setValue(""); setLocType("");
+  };
+
+  const applyDelete = async () => {
+    if (selected.size===0) return;
+    const remaining = items.filter(i => !selected.has(i.id));
+    await saveItems(remaining);
+    toast$(`${selected.size} artiklar borttagna`,"success");
+    setSelected(new Set()); setConfirmDelete(false);
   };
 
   return (
-    <Page>
-      <TopBar title="Massredigering" onBack={pop} subtitle="Ändra flera artiklar"/>
-      <div style={{padding:"14px 14px 120px"}}>
-        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Vad ska ändras?</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {FIELDS.map(f=>(
-              <button key={f.k} onClick={()=>{setField(f.k);setValue("");}} style={{padding:"10px",borderRadius:8,border:`2px solid ${field===f.k?B:BD}`,background:field===f.k?B+"08":WH,fontWeight:field===f.k?700:500,fontSize:12,color:field===f.k?B:TX,cursor:"pointer"}}>{f.l}</button>
-            ))}
-          </div>
-          <div style={{marginTop:10}}>
-            {currentField?.opts
-              ? <Sel label={`Nytt värde — ${currentField.l}`} value={value} onChange={e=>setValue(e.target.value)} options={["",  ...currentField.opts]}/>
-              : <Inp label={`Nytt värde — ${currentField?.l}`} value={value} onChange={e=>setValue(e.target.value)} placeholder="Skriv nytt värde..."/>
-            }
-          </div>
+    <Page flush noAnim>
+      <TopBar title="Massredigering" onBack={pop} subtitle="Ändra eller ta bort flera artiklar"/>
+      <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 14px 20px"}}>
+        {/* Läge: ändra eller ta bort */}
+        <div style={{display:"flex",gap:6,background:BG,borderRadius:10,padding:4,marginBottom:14}}>
+          <button onClick={()=>{setMode("edit");}} style={{flex:1,padding:"9px",borderRadius:7,border:"none",background:mode==="edit"?WH:"transparent",color:mode==="edit"?B:MU,fontWeight:700,fontSize:13,boxShadow:mode==="edit"?SH:"none",cursor:"pointer"}}><Icon name="pen"/> Ändra fält</button>
+          <button onClick={()=>{setMode("delete");}} style={{flex:1,padding:"9px",borderRadius:7,border:"none",background:mode==="delete"?WH:"transparent",color:mode==="delete"?R:MU,fontWeight:700,fontSize:13,boxShadow:mode==="delete"?SH:"none",cursor:"pointer"}}><Icon name="trash"/> Ta bort</button>
         </div>
 
+        {mode==="edit"&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Vad ska ändras?</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+              {FIELDS.map(f=>(
+                <button key={f.k} onClick={()=>{setField(f.k);setValue("");setLocType("");}} style={{padding:"10px 6px",borderRadius:8,border:`2px solid ${field===f.k?B:BD}`,background:field===f.k?B+"08":WH,fontWeight:field===f.k?700:500,fontSize:12,color:field===f.k?B:TX,cursor:"pointer"}}>{f.l}</button>
+              ))}
+            </div>
+            <div style={{marginTop:10}}>
+              {field==="location" ? (
+                <>
+                  <Sel label="Placeringstyp (valfritt)" value={locType} onChange={e=>setLocType(e.target.value)} options={LOCTYPES}/>
+                  <div style={{marginTop:8}}>
+                    <Inp label="Placering" value={value} onChange={e=>setValue(e.target.value)} placeholder="t.ex. A12, Rum 3..."/>
+                  </div>
+                  <div style={{fontSize:11,color:MU,marginTop:4}}>Lämnar du placeringstyp tom behålls den befintliga typen på varje del.</div>
+                </>
+              ) : currentField?.opts
+                ? <Sel label={`Nytt värde — ${currentField.l}`} value={value} onChange={e=>setValue(e.target.value)} options={["",  ...currentField.opts]}/>
+                : <Inp label={`Nytt värde — ${currentField?.l}`} value={value} onChange={e=>setValue(e.target.value)} placeholder="Skriv nytt värde..."/>
+              }
+            </div>
+          </div>
+        )}
+
+        {mode==="delete"&&(
+          <div style={{background:R+"08",borderRadius:10,border:`1.5px solid ${R}40`,padding:14,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,color:R,fontWeight:700,fontSize:13,marginBottom:4}}><Icon name="triangle-exclamation"/> Ta bort flera artiklar</div>
+            <div style={{fontSize:12,color:TM}}>Markera de artiklar du vill ta bort i listan nedan. Borttagning kan inte ångras — ta gärna en backup först.</div>
+          </div>
+        )}
+
         <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök artikel..." style={{flex:1,padding:"9px 12px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök (namn, lagernr, artikelnr, regnr...)" style={{flex:1,padding:"9px 12px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13}}/>
           <button onClick={selAll} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:B}}>Alla</button>
           <button onClick={()=>setSelected(new Set())} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:MU}}>Rensa</button>
         </div>
+        <div style={{fontSize:11,color:MU,marginBottom:10}}>Visar {filtered.length} av {items.length} · {selected.size} valda</div>
 
-        {filtered.map(item=>(
-          <div key={item.id} onClick={()=>toggle(item.id)} style={{background:WH,borderRadius:8,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"center",cursor:"pointer"}}>
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${selected.has(item.id)?B:BD}`,background:selected.has(item.id)?B:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {selected.has(item.id)&&<Icon name="check" style={{fontSize:10,color:WH}}/>}
+        {filtered.map(item=>{
+          const sel = selected.has(item.id);
+          const accent = mode==="delete"?R:B;
+          return (
+            <div key={item.id} onClick={()=>toggle(item.id)} style={{background:WH,borderRadius:8,border:`2px solid ${sel?accent:BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"center",cursor:"pointer"}}>
+              <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${sel?accent:BD}`,background:sel?accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {sel&&<Icon name="check" style={{fontSize:10,color:WH}}/>}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.stockNumber?`#${item.stockNumber} `:""}{item.name}{item.side?` — ${item.side}`:""}</div>
+                <div style={{fontSize:11,color:MU}}>{mode==="edit"?(field==="location"?[item.locationType,item.location].filter(Boolean).join(" ")||"—":(item[field]||"—")):(item.oem||item.sku)} · {item.sku}</div>
+              </div>
+              <div style={{fontWeight:700,color:B,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
             </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
-              <div style={{fontSize:11,color:MU}}>{item[field]||"—"} · {item.sku}</div>
-            </div>
-            <div style={{fontWeight:700,color:B,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {selected.size>0&&value&&(
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))"}}>
-          <div style={{fontSize:12,color:MU,marginBottom:8}}>{selected.size} artiklar valda → ändra {currentField?.l} till <strong>"{value}"</strong></div>
+      {/* Fast fot */}
+      {mode==="edit"&&selected.size>0&&value&&(
+        <div style={{flexShrink:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 20px rgba(0,0,0,.08)"}}>
+          <div style={{fontSize:12,color:MU,marginBottom:8}}>{selected.size} artiklar valda → ändra {currentField?.l} till <strong>"{field==="location"?`${locType?locType+" ":""}${value}`:value}"</strong></div>
           <Btn full variant="red" onClick={()=>setConfirmBulk(true)}>Tillämpa på {selected.size} artiklar</Btn>
+        </div>
+      )}
+      {mode==="delete"&&selected.size>0&&(
+        <div style={{flexShrink:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 20px rgba(0,0,0,.08)"}}>
+          <div style={{fontSize:12,color:MU,marginBottom:8}}>{selected.size} artiklar markerade för borttagning</div>
+          <Btn full variant="red" onClick={()=>setConfirmDelete(true)}><Icon name="trash"/> Ta bort {selected.size} artiklar</Btn>
         </div>
       )}
 
@@ -2424,10 +2480,23 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmBulk(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:320,width:"100%"}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Bekräfta massändring</div>
-            <div style={{fontSize:13,color:MU,marginBottom:16}}>Ändrar {currentField?.l} till <strong>"{value}"</strong> på {selected.size} artiklar. Kan inte ångras.</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Ändrar {currentField?.l} till <strong>"{field==="location"?`${locType?locType+" ":""}${value}`:value}"</strong> på {selected.size} artiklar. Kan inte ångras.</div>
             <div style={{display:"flex",gap:8}}>
               <Btn full variant="ghost" onClick={()=>setConfirmBulk(false)}>Avbryt</Btn>
               <Btn full variant="red" onClick={apply}>Tillämpa</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmDelete(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:R}}>Ta bort {selected.size} artiklar?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>De {selected.size} markerade artiklarna tas bort permanent från lagret. Detta går inte att ångra.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmDelete(false)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={applyDelete}>Ta bort permanent</Btn>
             </div>
           </div>
         </div>
