@@ -12,7 +12,10 @@ class ErrorBoundary extends React.Component {
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",padding:24,textAlign:"center",fontFamily:"sans-serif",background:"#F5F5F7"}}>
           <div style={{fontSize:48,marginBottom:16}}>⚠️</div>
           <div style={{fontWeight:700,fontSize:18,color:"#141820",marginBottom:8}}>Något gick fel</div>
-          <div style={{fontSize:14,color:"#666",marginBottom:24,maxWidth:340}}>Appen stötte på ett problem. Tryck för att ladda om.</div>
+          <div style={{fontSize:14,color:"#666",marginBottom:16,maxWidth:340}}>Appen stötte på ett problem. Tryck för att ladda om.</div>
+          {this.state.error&&(
+            <pre style={{fontSize:11,color:"#CC1B2B",background:"#FDECEC",border:"1px solid #f5c6c6",borderRadius:8,padding:"10px 12px",marginBottom:20,maxWidth:360,overflow:"auto",textAlign:"left",whiteSpace:"pre-wrap"}}>{String(this.state.error?.message||this.state.error)}</pre>
+          )}
           <button onClick={()=>window.location.reload()} style={{background:"#1B3A6B",color:"#fff",border:"none",borderRadius:8,padding:"12px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
             Ladda om appen
           </button>
