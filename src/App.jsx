@@ -827,7 +827,7 @@ function AppInner() {
 
   const addToCart = useCallback((item, qty=1) => {
     // Försök låsa delen för kassan — så ingen annan kan sälja/redigera den
-    const meUser = session ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
+    const meUser = (session && Array.isArray(users)) ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
     lockAcquire(item.id, meUser, "cart").then(r => {
       if (!r.ok && r.lockedBy && r.lockedBy !== meUser) {
         toast$(`${r.lockedBy} ${r.action==="cart"?"har redan den i sin kassa":"redigerar den"} — kunde inte läggas till`, "error");
@@ -842,7 +842,7 @@ function AppInner() {
   }, [session, users]);
   const clearCart = useCallback(() => {
     // Släpp alla kassa-lås
-    const meUser = session ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
+    const meUser = (session && Array.isArray(users)) ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
     setCart(c => { c.forEach(r => lockRelease(r.item.id, meUser)); return []; });
   }, [session, users]);
 
@@ -851,7 +851,7 @@ function AppInner() {
 
   // Synka inloggat användarnamn för API-headers (måste ligga före tidiga returns)
   useEffect(() => {
-    const u = session ? (users.find(x=>x.id===session)?.username || null) : null;
+    const u = (session && Array.isArray(users)) ? (users.find(x=>x.id===session)?.username || null) : null;
     setCurrentUsername(u);
   }, [session, users]);
 
@@ -863,7 +863,7 @@ function AppInner() {
     </div>
   );
 
-  const currentUser = session ? users.find(u=>u.id===session) : null;
+  const currentUser = (session && Array.isArray(users)) ? users.find(u=>u.id===session) : null;
   const isAdmin = currentUser?.role === "admin";
   const can = p => {
     if (!currentUser) return p==="canView";
