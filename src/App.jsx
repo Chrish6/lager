@@ -2354,6 +2354,7 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
   const [value, setValue] = useState("");
   const [locType, setLocType] = useState(""); // för placering: vald placeringstyp
   const [search, setSearch] = useState("");
+  const [searchScope, setSearchScope] = useState("all"); // "all" | "stock"
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -2361,6 +2362,12 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
   const filtered = items.filter(i => {
     if (!search) return true;
     const q = search.toLowerCase();
+    if (searchScope==="stock") {
+      // Bara lagernummer — exakt eller delmatchning, samt komma-separerade ("11, 15")
+      const nums = q.split(",").map(s=>s.trim()).filter(Boolean);
+      const sn = (i.stockNumber||"").toLowerCase();
+      return nums.some(n => sn===n || sn.includes(n));
+    }
     return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.regNumber,i.location,i.make,i.model].some(f=>f?.toLowerCase().includes(q));
   });
   const selAll = () => setSelected(new Set(filtered.map(i=>i.id)));
@@ -2437,8 +2444,12 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
           </div>
         )}
 
+        <div style={{display:"flex",gap:6,background:BG,borderRadius:8,padding:3,marginBottom:8}}>
+          <button onClick={()=>setSearchScope("all")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="all"?WH:"transparent",color:searchScope==="all"?B:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="all"?SH:"none",cursor:"pointer"}}>Sök allt</button>
+          <button onClick={()=>setSearchScope("stock")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="stock"?WH:"transparent",color:searchScope==="stock"?B:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="stock"?SH:"none",cursor:"pointer"}}>Bara lagernummer</button>
+        </div>
         <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök (namn, lagernr, artikelnr, regnr...)" style={{flex:1,padding:"9px 12px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={searchScope==="stock"?"Lagernr (t.ex. 11, 15, 23)":"Sök (namn, lagernr, artikelnr, regnr...)"} style={{flex:1,padding:"9px 12px",border:`1.5px solid ${searchScope==="stock"?B:BD}`,borderRadius:8,fontSize:13,background:searchScope==="stock"?B+"06":WH}}/>
           <button onClick={selAll} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:B}}>Alla</button>
           <button onClick={()=>setSelected(new Set())} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:MU}}>Rensa</button>
         </div>
