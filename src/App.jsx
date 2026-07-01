@@ -800,7 +800,10 @@ function AppInner() {
   }, []);
 
   const [sales, setSales] = useState([]);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    // Läs tillbaka kassan om sidan laddats om
+    try { const s = localStorage.getItem("ow:cart"); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
   const [activityLog, setActivityLog] = useState([]);
   const [settings, setSettings] = useState({ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK", lowStockAlert:2 });
   const [suppliers, setSuppliers] = useState([]);
@@ -827,7 +830,12 @@ function AppInner() {
     });
   }, []);
 
-  const addToCart = useCallback((item, qty=1) => {
+  // Spara kassan lokalt så den överlever en omladdning
+  useEffect(() => {
+    try { localStorage.setItem("ow:cart", JSON.stringify(cart)); } catch {}
+  }, [cart]);
+
+  const addToCart = useCallback((item, qty=1, meta=null) => {
     // Försök låsa delen för kassan — så ingen annan kan sälja/redigera den
     const meUser = (session && Array.isArray(users)) ? (users.find(u=>u.id===session)?.username || "Okänd") : "Okänd";
     lockAcquire(item.id, meUser, "cart").then(r => {
@@ -838,7 +846,7 @@ function AppInner() {
       setCart(c => {
         const existing = c.find(r2 => r2.item.id === item.id);
         if (existing) return c.map(r2 => r2.item.id === item.id ? {...r2, qty: r2.qty + qty} : r2);
-        return [...c, { item, qty, unitPrice: item.price, discountMode:"pct", discountPct:0, discountKr:0 }];
+        return [...c, { item, qty, unitPrice: item.price, discountMode:"pct", discountPct:0, discountKr:0, ...(meta||{}) }];
       });
     });
   }, [session, users]);
@@ -876,7 +884,7 @@ function AppInner() {
     return !!currentUser.permissions?.[p];
   };
 
-  const sharedProps = { users, items, sales, cart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers };
+  const sharedProps = { users, items, sales, cart, setCart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -955,11 +963,16 @@ function AppInner() {
 
 
 // ─── Checkout Page ────────────────────────────────────────────────────────────
-function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, saveSales, currentUser, isAdmin, can, push, pop, toast$, logActivity }) {
+function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveItems, saveSales, currentUser, isAdmin, can, push, pop, toast$, logActivity }) {
   const [rows, setRows] = useState(() =>
-    cart.map(r => ({ ...r, key: r.item.id + "-" + Date.now() }))
+    cart.map(r => ({ priceMode:"incl", discountMode:"pct", discountPct:0, discountKr:0, ...r, key: r.item.id + "-" + (r.key||Date.now()) }))
   );
-  const [buyer, setBuyer] = useState("");
+  // Håll den globala kassan (badge + localStorage) i synk med raderna här
+  useEffect(() => { setCart?.(rows); }, [rows]);
+  const [buyer, setBuyer] = useState(() => {
+    const withCust = cart.find(r=>r.customer||r.regNumber);
+    return withCust ? (withCust.customer || withCust.regNumber || "") : "";
+  });
   const [payMethod, setPayMethod] = useState("kontant"); // kontant | swish | kort
   const [cashGiven, setCashGiven] = useState("");
   const [note, setNote] = useState("");
@@ -1046,13 +1059,17 @@ function CheckoutPage({ cart, addToCart, clearCart, items, sales, saveItems, sav
     for (const entry of saleEntries) {
       const it = latestItems.find(i=>i.id===entry.itemId);
       if (it) {
+        // Om raden kom från en reservation — ta bort just den reservationen
+        const row = rows.find(r=>r.item.id===entry.itemId);
+        const resId = row?.reservationId;
+        const trimmedRes = resId ? (it.reservations||[]).filter(x=>x.id!==resId) : it.reservations;
         const newQty = it.quantity - entry.qty;
         if (newQty <= 0) {
           const res = await deleteOneItem(entry.itemId);
           if (res) latestItems = res;
           else latestItems = latestItems.filter(i=>i.id!==entry.itemId);
         } else {
-          const updatedItem = {...it, quantity:newQty, updatedAt:now};
+          const updatedItem = {...it, quantity:newQty, reservations:trimmedRes, updatedAt:now};
           const res = await saveOneItem(updatedItem);
           if (res) latestItems = res;
           else latestItems = latestItems.map(i=>i.id===entry.itemId?updatedItem:i);
@@ -1697,7 +1714,17 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
         ${payMethod==="kontant"&&cashGiven?`<div>Betalt: ${Number(cashGiven).toLocaleString("sv-SE")} kr &nbsp;·&nbsp; Växel: ${(change||0).toLocaleString("sv-SE")} kr</div>`:""}
       </div>
       ${note?`<div style="font-size:11px;color:#888;margin-top:8px;border-top:1px solid #eee;padding-top:8px">${note}</div>`:""}
-      <div style="text-align:center;font-size:11px;color:#bbb;border-top:2px dashed #ccc;padding-top:14px;margin-top:14px">Tack för ditt köp!</div>
+      <div style="margin-top:36px;display:flex;gap:24px">
+        <div style="flex:1;text-align:center">
+          <div style="border-top:1.5px solid #333;padding-top:5px;font-size:11px;color:#555">Säljarens underskrift</div>
+          <div style="font-size:10px;color:#999;margin-top:3px">${soldBy}</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="border-top:1.5px solid #333;padding-top:5px;font-size:11px;color:#555">Kundens underskrift</div>
+          <div style="font-size:10px;color:#999;margin-top:3px">${buyer!=="Okänd"?buyer:"&nbsp;"}</div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#bbb;border-top:2px dashed #ccc;padding-top:14px;margin-top:24px">Tack för ditt köp!</div>
       <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
       </body></html>`;
     printHtml(html);
@@ -3702,6 +3729,9 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 // ─── Reservations Page — alla reservationer, grupperade per regnummer ─────────
 function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$, addToCart, cart }) {
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
+  const [confirmRemoveAll, setConfirmRemoveAll] = useState(null); // {reg, list}
+  const [expanded, setExpanded] = useState(new Set());
+  const toggleExpand = reg => setExpanded(s => { const n=new Set(s); n.has(reg)?n.delete(reg):n.add(reg); return n; });
   const [search, setSearch] = useState("");
   const [showSort, setShowSort] = useState(false);
   const [sortBy, setSortBy] = useState("reg"); // reg | customer | recent | count | value
@@ -3882,9 +3912,18 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     push("sell", { item:updated, maxQty:1, presetBuyer: r.customer || r.regNumber });
   };
 
-  // Lägg alla en bils reserverade delar i kassan på en gång
+  // Lägg alla en bils reserverade delar i kassan på en gång.
+  // Reservationerna tas INTE bort nu — de rensas först när köpet slutförs i kassan.
   const sellAllFromRes = async (reg, list) => {
-    // Ta bort just dessa reservationer från respektive del
+    for (const r of list) {
+      addToCart?.(r.item, 1, { regNumber: r.regNumber, customer: r.customer, reservationId: r.id });
+    }
+    toast$(`${list.length} delar för ${reg} lades i kassan`,"success");
+    push("checkout");
+  };
+
+  // Ta bort en hel bils reservationer på en gång
+  const removeWholeReservation = async (reg, list) => {
     let working = items;
     for (const r of list) {
       const it = working.find(i=>i.id===r.item.id);
@@ -3895,13 +3934,8 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
       working = res || working.map(i=>i.id===it.id?updated:i);
     }
     await saveItems(working);
-    // Lägg varje del i kassan
-    for (const r of list) {
-      const fresh = working.find(i=>i.id===r.item.id) || r.item;
-      addToCart?.(fresh, 1);
-    }
-    toast$(`${list.length} delar för ${reg} lades i kassan`,"success");
-    push("checkout");
+    setConfirmRemoveAll(null);
+    toast$(`Reservationen för ${reg} borttagen`,"success");
   };
 
   // Bygg en lista: en post per reservation, med tillhörande artikel
@@ -4025,40 +4059,45 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               const total = list.reduce((a,r)=>a+(r.item?.price||0),0);
               const canSell = isAdmin || can("canSell");
               const canEditRes = isAdmin || can("canEditReservations");
+              const isOpen = expanded.has(reg);
               return (
                 <div key={reg} style={{background:WH,borderRadius:12,border:`1.5px solid ${AM}40`,overflow:"hidden"}}>
-                  {/* Bil-header med totalpris */}
-                  <div style={{background:AM+"12",padding:"10px 14px",borderBottom:`1px solid ${AM}25`}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
-                      {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
-                      <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
-                        <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
-                        <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"} · totalt</div>
-                      </div>
+                  {/* Bil-header (klickbar dropdown) */}
+                  <div onClick={()=>toggleExpand(reg)} style={{background:AM+"12",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",borderBottom:isOpen?`1px solid ${AM}25`:"none"}}>
+                    <Icon name={isOpen?"chevron-down":"chevron-right"} style={{color:AM,fontSize:13,flexShrink:0}}/>
+                    <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
+                    {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
+                    <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
+                      <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</div>
                     </div>
-                    {canSell&&(
-                      <button onClick={()=>sellAllFromRes(reg, list)} style={{width:"100%",marginTop:9,display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:R,color:WH,border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                        <Icon name="cart-shopping"/> Sälj alla i kassan ({total.toLocaleString("sv-SE")} kr)
-                      </button>
-                    )}
                   </div>
-                  {/* Kompakta rader: bara det viktigaste */}
-                  <div>
-                    {list.map(r=>(
-                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderBottom:`1px solid ${BD}30`}}>
-                        <div onClick={()=>push("detail",{item:r.item})} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
-                            <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
-                          </div>
-                        </div>
-                        <span style={{fontWeight:800,fontSize:14,color:B,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
-                        {canSell&&<button onClick={()=>sellFromRes(r)} title="Sälj" style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,background:R,color:WH,border:"none",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="tag"/>{!isMobile&&" Sälj"}</button>}
-                        {canEditRes&&<button onClick={()=>setConfirmUnreserve({item:r.item, res:r})} title="Ta bort reservation" style={{flexShrink:0,background:"none",border:"none",color:R,cursor:"pointer",padding:"6px 8px",fontSize:14}}><Icon name="xmark"/></button>}
+
+                  {isOpen&&(<>
+                    {/* Åtgärdsknappar för hela bilen — kompakta */}
+                    {(canSell||canEditRes)&&(
+                      <div style={{display:"flex",gap:8,padding:"10px 14px 4px"}}>
+                        {canSell&&<button onClick={()=>sellAllFromRes(reg, list)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:R,color:WH,border:"none",borderRadius:7,padding:"7px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="cart-shopping"/> Sälj alla i kassan</button>}
+                        {canEditRes&&<button onClick={()=>setConfirmRemoveAll({reg, list})} title="Ta bort hela reservationen" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:WH,color:R,border:`1.5px solid ${R}40`,borderRadius:7,padding:"7px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="trash"/>{!isMobile&&" Ta bort alla"}</button>}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                    {/* Kompakta rader */}
+                    <div style={{padding:"4px 0 4px"}}>
+                      {list.map(r=>(
+                        <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderBottom:`1px solid ${BD}30`}}>
+                          <div onClick={()=>push("detail",{item:r.item})} style={{flex:1,minWidth:0,cursor:"pointer"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
+                              <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
+                            </div>
+                          </div>
+                          <span style={{fontWeight:800,fontSize:14,color:B,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
+                          {canSell&&<button onClick={()=>sellFromRes(r)} title="Sälj" style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,background:R,color:WH,border:"none",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="tag"/>{!isMobile&&" Sälj"}</button>}
+                          {canEditRes&&<button onClick={()=>setConfirmUnreserve({item:r.item, res:r})} title="Ta bort reservation" style={{flexShrink:0,background:"none",border:"none",color:R,cursor:"pointer",padding:"6px 8px",fontSize:14}}><Icon name="xmark"/></button>}
+                        </div>
+                      ))}
+                    </div>
+                  </>)}
                 </div>
               );
             })}
@@ -4074,6 +4113,19 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
             <div style={{display:"flex",gap:8}}>
               <Btn full variant="ghost" onClick={()=>setConfirmUnreserve(null)}>Avbryt</Btn>
               <Btn full variant="red" onClick={()=>removeReservation(confirmUnreserve.item, confirmUnreserve.res.id)}>Ta bort</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmRemoveAll&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmRemoveAll(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:R}}>Ta bort hela reservationen?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Alla <strong style={{color:TX}}>{confirmRemoveAll.list.length} delar</strong> som är reserverade till <strong style={{color:TX}}>{confirmRemoveAll.reg}</strong> av-reserveras. Delarna finns kvar i lagret.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmRemoveAll(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>removeWholeReservation(confirmRemoveAll.reg, confirmRemoveAll.list)}>Ta bort alla</Btn>
             </div>
           </div>
         </div>
