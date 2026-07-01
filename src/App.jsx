@@ -3658,16 +3658,23 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   const [newForm, setNewForm] = useState({ regNumber:"", customer:"", note:"" });
   const [pickSearch, setPickSearch] = useState("");
   const [picked, setPicked] = useState(new Set());
+  const [pickSort, setPickSort] = useState("stockNumber"); // stockNumber | name | price | category
+  const [pickSortDir, setPickSortDir] = useState("asc");
+  const [pickShowSort, setPickShowSort] = useState(false);
+  const [pickCat, setPickCat] = useState(""); // filter på kategori
   const [scanError, setScanError] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const scanFileRef = useRef(null);
+  const scanVideoRef = useRef(null);
+  const scanReaderRef = useRef(null);
   const canAdd = isAdmin || can("canAddReservations");
+  useEffect(() => () => { if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} } }, []);
 
   if (!isAdmin && !can("canViewReservations")) return <Page><TopBar title="Reservationer" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
 
   const togglePick = id => setPicked(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
 
-  // ── QR via foto — samma teknik som bildtagning (fungerar över HTTP) ──
-  // Vi tar ett foto med enhetens kamera (native), och avkodar QR-koden ur bilden.
-  const scanFileRef = useRef(null);
+  // ── QR-skanning: live-video (fungerar i Electron/HTTPS) + foto som reserv ──
   const loadZXing = () => new Promise((resolve, reject) => {
     if (window.ZXing) { resolve(window.ZXing); return; }
     const s = document.createElement("script");
@@ -3675,6 +3682,40 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     s.onload = () => resolve(window.ZXing); s.onerror = reject;
     document.head.appendChild(s);
   });
+  const stopScan = () => {
+    if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} scanReaderRef.current = null; }
+    setScanning(false);
+  };
+  const startScan = async () => {
+    setScanError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScanError("Live-kamera stöds inte här — använd 'Ta foto' istället.");
+      return;
+    }
+    try {
+      const ZXing = await loadZXing();
+      const hints = new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      const reader = new ZXing.BrowserMultiFormatReader(hints);
+      scanReaderRef.current = reader;
+      setScanning(true);
+      // Välj bakre kameran om möjligt
+      let deviceId = null;
+      try {
+        const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
+        const back = devices.find(d => /back|rear|environment|bak/i.test(d.label));
+        deviceId = (back || devices[devices.length-1])?.deviceId || null;
+      } catch {}
+      await reader.decodeFromVideoDevice(deviceId, scanVideoRef.current, (result) => {
+        if (result) { handleScan(result.getText()); }
+      });
+    } catch (err) {
+      let msg = "Kunde inte starta kameran.";
+      if (err?.name === "NotAllowedError") msg = "Kameraåtkomst nekades.";
+      else if (err?.name === "NotFoundError") msg = "Ingen kamera hittades.";
+      else if (err?.name === "NotReadableError") msg = "Kameran används av en annan app.";
+      setScanError(msg); setScanning(false);
+    }
+  };
   const decodePhoto = async (file) => {
     if (!file) return;
     setScanError(null);
@@ -3688,12 +3729,9 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
       } catch (e) {
         toast$("Ingen QR-kod hittades i bilden — försök igen","error");
       } finally {
-        URL.revokeObjectURL(url);
-        try { reader.reset(); } catch {}
+        URL.revokeObjectURL(url); try { reader.reset(); } catch {}
       }
-    } catch (e) {
-      setScanError("Kunde inte läsa QR-koden.");
-    }
+    } catch (e) { setScanError("Kunde inte läsa QR-koden."); }
   };
   const handleScan = (code) => {
     const c = (code||"").trim();
@@ -3701,19 +3739,31 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     if (!match) { toast$(`Ingen del matchade: ${c}`,"error"); return; }
     const free = (match.quantity||0) - ((match.reservations&&match.reservations.length)||0);
     if (free <= 0) { toast$(`${match.name} har inga lediga exemplar`,"error"); return; }
-    if (picked.has(match.id)) { toast$(`${match.name} är redan vald`,"info"); return; }
+    if (picked.has(match.id)) { return; } // redan vald — ignorera tyst (live scannar ofta samma)
     setPicked(s => new Set(s).add(match.id));
     toast$(`La till: ${match.name}${match.stockNumber?` (#${match.stockNumber})`:""}`,"success");
   };
 
   // Delar som går att reservera (har minst ett ledigt exemplar)
-  const pickable = items.filter(i => {
+  let pickable = items.filter(i => {
     const free = (i.quantity||0) - ((i.reservations&&i.reservations.length)||0);
     if (free <= 0) return false;
+    if (pickCat && i.category !== pickCat) return false;
     if (!pickSearch.trim()) return true;
     const q = pickSearch.trim().toLowerCase();
-    return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.side,i.location].some(f=>f?.toLowerCase().includes(q));
+    return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.side,i.location,i.regNumber,i.make,i.model].some(f=>f?.toLowerCase().includes(q));
   });
+  // Sortering av valbara delar
+  const PICK_NUMERIC = new Set(["price","stockNumber","quantity"]);
+  pickable = [...pickable].sort((a,b) => {
+    let va = a[pickSort], vb = b[pickSort];
+    const aE = va===undefined||va===null||va==="", bE = vb===undefined||vb===null||vb==="";
+    if (aE && bE) return 0; if (aE) return 1; if (bE) return -1;
+    let cmp = PICK_NUMERIC.has(pickSort) ? Number(va)-Number(vb) : String(va).localeCompare(String(vb),"sv",{sensitivity:"base",numeric:true});
+    return pickSortDir==="asc" ? cmp : -cmp;
+  });
+  // Kategorier som finns bland valbara delar (för filterknappar)
+  const pickCats = [...new Set(items.filter(i=>((i.quantity||0)-((i.reservations&&i.reservations.length)||0))>0).map(i=>i.category).filter(Boolean))].sort();
 
   const saveMultiReservation = async () => {
     if (!newForm.regNumber.trim()) { toast$("Ange registreringsnummer","error"); return; }
@@ -3735,6 +3785,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     }
     await saveItems(working);
     toast$(`${picked.size} delar reserverade till ${reg}`,"success");
+    stopScan();
     setShowNew(false); setPicked(new Set()); setNewForm({ regNumber:"", customer:"", note:"" }); setPickSearch("");
   };
 
@@ -3919,7 +3970,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
       {showNew&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",flexDirection:"column",zIndex:300}}>
           <div className="topbar-safe" style={{background:WH,borderBottom:`1px solid ${BD}`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-            <button onClick={()=>{setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
+            <button onClick={()=>{stopScan();setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
             <div style={{fontWeight:800,fontSize:16,flex:1}}>Ny reservation</div>
             <span style={{fontSize:13,color:picked.size?B:MU,fontWeight:700}}>{picked.size} valda</span>
           </div>
@@ -3949,13 +4000,66 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                   style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
               </div>
               <input ref={scanFileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{decodePhoto(e.target.files[0]); e.target.value="";}}/>
-              <button onClick={()=>scanFileRef.current?.click()} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${B}`,background:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
-                <Icon name="qrcode"/> Skanna
+              <button onClick={()=>{ if(scanning) stopScan(); else startScan(); }} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${scanning?R:B}`,background:scanning?R:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                <Icon name={scanning?"xmark":"qrcode"}/> {scanning?"Stäng":"Skanna"}
               </button>
             </div>
-            {scanError&&<div style={{background:R+"10",border:`1px solid ${R}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:R,marginBottom:10}}>{scanError}</div>}
-            <div style={{fontSize:11,color:MU,marginBottom:10}}>{pickable.length} delar med lediga exemplar</div>
 
+            {/* Live-kameravy */}
+            {scanning&&(
+              <div style={{background:"#000",borderRadius:10,overflow:"hidden",marginBottom:10,position:"relative"}}>
+                <video ref={scanVideoRef} style={{width:"100%",maxHeight:280,objectFit:"cover",display:"block"}} muted playsInline autoPlay/>
+                <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"55%",aspectRatio:"1",border:`3px solid ${WH}`,borderRadius:12,boxShadow:"0 0 0 2000px rgba(0,0,0,.35)"}}/>
+                <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center",color:WH,fontSize:12,fontWeight:600}}>Rikta kameran mot QR-koden</div>
+              </div>
+            )}
+            {scanError&&(
+              <div style={{background:R+"10",border:`1px solid ${R}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:R,marginBottom:10}}>
+                {scanError}
+                <button onClick={()=>scanFileRef.current?.click()} style={{display:"block",marginTop:6,background:"none",border:"none",color:B,fontWeight:700,fontSize:12,textDecoration:"underline",cursor:"pointer",padding:0}}>Ta foto istället</button>
+              </div>
+            )}
+
+            {/* Sortera + kategorifilter */}
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+              <button onClick={()=>setPickShowSort(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pickShowSort?B:BD}`,background:pickShowSort?B+"08":WH,color:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
+                <Icon name="arrow-up-wide-short"/> Sortera
+              </button>
+              <div style={{fontSize:11,color:MU,marginLeft:"auto"}}>{pickable.length} delar · {picked.size} valda</div>
+            </div>
+
+            {pickShowSort&&(
+              <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:8,overflow:"hidden"}}>
+                {[
+                  {k:"stockNumber",dir:"asc",l:"Lagernummer stigande",icon:"arrow-down-1-9"},
+                  {k:"stockNumber",dir:"desc",l:"Lagernummer fallande",icon:"arrow-up-9-1"},
+                  {k:"name",dir:"asc",l:"Namn A–Ö",icon:"arrow-down-a-z"},
+                  {k:"price",dir:"desc",l:"Högst pris först",icon:"tag"},
+                  {k:"price",dir:"asc",l:"Lägst pris först",icon:"tag"},
+                  {k:"category",dir:"asc",l:"Kategori A–Ö",icon:"layer-group"},
+                ].map(o=>{
+                  const active = pickSort===o.k && pickSortDir===o.dir;
+                  return (
+                    <button key={o.k+o.dir} onClick={()=>{setPickSort(o.k);setPickSortDir(o.dir);setPickShowSort(false);}}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:active?B+"08":"transparent",border:"none",borderBottom:`1px solid ${BD}40`,cursor:"pointer",textAlign:"left"}}>
+                      <i className={`fa-solid fa-${o.icon}`} style={{color:active?B:MU,fontSize:12,width:16}}/>
+                      <span style={{fontSize:13,fontWeight:active?700:500,color:active?B:TX,flex:1}}>{o.l}</span>
+                      {active&&<Icon name="check" style={{color:B,fontSize:12}}/>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Kategorifilter — chips */}
+            {pickCats.length>0&&(
+              <div style={{display:"flex",gap:6,marginBottom:10,overflowX:"auto",paddingBottom:4}}>
+                <button onClick={()=>setPickCat("")} style={{flexShrink:0,padding:"5px 12px",borderRadius:16,border:`1.5px solid ${!pickCat?B:BD}`,background:!pickCat?B:WH,color:!pickCat?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer"}}>Alla</button>
+                {pickCats.map(c=>(
+                  <button key={c} onClick={()=>setPickCat(c===pickCat?"":c)} style={{flexShrink:0,padding:"5px 12px",borderRadius:16,border:`1.5px solid ${pickCat===c?B:BD}`,background:pickCat===c?B:WH,color:pickCat===c?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
+                ))}
+              </div>
+            )}
             {pickable.map(item=>{
               const sel = picked.has(item.id);
               const free = (item.quantity||0)-((item.reservations&&item.reservations.length)||0);
