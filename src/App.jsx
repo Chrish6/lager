@@ -3700,7 +3700,7 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
 // ─── Reservations Page — alla reservationer, grupperade per regnummer ─────────
-function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$ }) {
+function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$, addToCart, cart }) {
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
   const [search, setSearch] = useState("");
   const [showSort, setShowSort] = useState(false);
@@ -3882,6 +3882,28 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     push("sell", { item:updated, maxQty:1, presetBuyer: r.customer || r.regNumber });
   };
 
+  // Lägg alla en bils reserverade delar i kassan på en gång
+  const sellAllFromRes = async (reg, list) => {
+    // Ta bort just dessa reservationer från respektive del
+    let working = items;
+    for (const r of list) {
+      const it = working.find(i=>i.id===r.item.id);
+      if (!it) continue;
+      const remaining = (it.reservations||[]).filter(x=>x.id!==r.id);
+      const updated = { ...it, reservations: remaining, updatedAt:Date.now() };
+      const res = await saveOneItem(updated);
+      working = res || working.map(i=>i.id===it.id?updated:i);
+    }
+    await saveItems(working);
+    // Lägg varje del i kassan
+    for (const r of list) {
+      const fresh = working.find(i=>i.id===r.item.id) || r.item;
+      addToCart?.(fresh, 1);
+    }
+    toast$(`${list.length} delar för ${reg} lades i kassan`,"success");
+    push("checkout");
+  };
+
   // Bygg en lista: en post per reservation, med tillhörande artikel
   const allRes = [];
   for (const it of items) {
@@ -4006,13 +4028,20 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               return (
                 <div key={reg} style={{background:WH,borderRadius:12,border:`1.5px solid ${AM}40`,overflow:"hidden"}}>
                   {/* Bil-header med totalpris */}
-                  <div style={{background:AM+"12",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${AM}25`}}>
-                    <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
-                    {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
-                    <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
-                      <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"} · totalt</div>
+                  <div style={{background:AM+"12",padding:"10px 14px",borderBottom:`1px solid ${AM}25`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
+                      {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
+                      <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
+                        <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
+                        <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"} · totalt</div>
+                      </div>
                     </div>
+                    {canSell&&(
+                      <button onClick={()=>sellAllFromRes(reg, list)} style={{width:"100%",marginTop:9,display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:R,color:WH,border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                        <Icon name="cart-shopping"/> Sälj alla i kassan ({total.toLocaleString("sv-SE")} kr)
+                      </button>
+                    )}
                   </div>
                   {/* Kompakta rader: bara det viktigaste */}
                   <div>
