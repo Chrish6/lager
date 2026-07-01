@@ -3645,9 +3645,111 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 // ─── Detail Page ──────────────────────────────────────────────────────────────
 // ─── Reservations Page — alla reservationer, grupperade per regnummer ─────────
 function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$ }) {
-  if (!isAdmin && !can("canViewReservations")) return <Page><TopBar title="Reservationer" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
   const [search, setSearch] = useState("");
+  const [showSort, setShowSort] = useState(false);
+  const [sortBy, setSortBy] = useState("reg"); // reg | customer | recent | count | value
+  const [sortDir, setSortDir] = useState("asc");
+  const [quickFilter, setQuickFilter] = useState("all"); // all | recent | many
+  // Ny reservation (flera delar → ett regnummer)
+  const [showNew, setShowNew] = useState(false);
+  const [newForm, setNewForm] = useState({ regNumber:"", customer:"", note:"" });
+  const [pickSearch, setPickSearch] = useState("");
+  const [picked, setPicked] = useState(new Set());
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState(null);
+  const scanVideoRef = useRef(null);
+  const scanReaderRef = useRef(null);
+  const canAdd = isAdmin || can("canAddReservations");
+  useEffect(() => () => { if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} } }, []);
+
+  if (!isAdmin && !can("canViewReservations")) return <Page><TopBar title="Reservationer" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+
+  const togglePick = id => setPicked(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+
+  // ── QR-skanning för att lägga till del i reservationen ──
+  const loadZXing = () => new Promise((resolve, reject) => {
+    if (window.ZXing) { resolve(window.ZXing); return; }
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js";
+    s.onload = () => resolve(window.ZXing); s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  const stopScan = () => {
+    if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} scanReaderRef.current = null; }
+    setScanning(false);
+  };
+  const startScan = async () => {
+    setScanError(null);
+    if (!navigator.mediaDevices?.getUserMedia) { setScanError("Kameran kräver HTTPS eller localhost."); return; }
+    try {
+      const ZXing = await loadZXing();
+      const hints = new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      const reader = new ZXing.BrowserMultiFormatReader(hints);
+      scanReaderRef.current = reader;
+      setScanning(true);
+      await reader.decodeFromVideoDevice(null, scanVideoRef.current, (result) => {
+        if (result) handleScan(result.getText());
+      });
+    } catch (err) {
+      let msg = "Kunde inte starta kameran.";
+      if (err?.name === "NotAllowedError") msg = "Kameraåtkomst nekades.";
+      else if (err?.name === "NotFoundError") msg = "Ingen kamera hittades.";
+      else if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") msg = "Kameran kräver HTTPS eller localhost.";
+      setScanError(msg); setScanning(false);
+    }
+  };
+  const handleScan = (code) => {
+    const c = (code||"").trim();
+    const match = items.find(i => i.oem===c || i.stockNumber===c || i.sku===c || i.id===c);
+    if (!match) { toast$(`Ingen del matchade: ${c}`,"error"); return; }
+    const free = (match.quantity||0) - ((match.reservations&&match.reservations.length)||0);
+    if (free <= 0) { toast$(`${match.name} har inga lediga exemplar`,"error"); return; }
+    if (picked.has(match.id)) { toast$(`${match.name} är redan vald`,"info"); return; }
+    setPicked(s => new Set(s).add(match.id));
+    toast$(`La till: ${match.name}${match.stockNumber?` (#${match.stockNumber})`:""}`,"success");
+  };
+
+  // Delar som går att reservera (har minst ett ledigt exemplar)
+  const pickable = items.filter(i => {
+    const free = (i.quantity||0) - ((i.reservations&&i.reservations.length)||0);
+    if (free <= 0) return false;
+    if (!pickSearch.trim()) return true;
+    const q = pickSearch.trim().toLowerCase();
+    return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.side,i.location].some(f=>f?.toLowerCase().includes(q));
+  });
+
+  const saveMultiReservation = async () => {
+    if (!newForm.regNumber.trim()) { toast$("Ange registreringsnummer","error"); return; }
+    if (picked.size===0) { toast$("Välj minst en del","error"); return; }
+    const reg = newForm.regNumber.trim().toUpperCase();
+    const cust = newForm.customer.trim();
+    const note = newForm.note.trim();
+    const by = currentUser?.username || "Okänd";
+    // Lägg till en reservation på varje vald del
+    let working = items;
+    for (const id of picked) {
+      const it = working.find(i=>i.id===id);
+      if (!it) continue;
+      const newRes = { id: genId("res"), regNumber:reg, customer:cust, note, by, ts:Date.now() };
+      const updated = { ...it, reservations:[...(it.reservations||[]), newRes], updatedAt:Date.now() };
+      const res = await saveOneItem(updated);
+      if (res) working = res;
+      else working = working.map(i=>i.id===id?updated:i);
+    }
+    await saveItems(working);
+    toast$(`${picked.size} delar reserverade till ${reg}`,"success");
+    stopScan();
+    setShowNew(false); setPicked(new Set()); setNewForm({ regNumber:"", customer:"", note:"" }); setPickSearch("");
+  };
+
+  const removeReservation = async (item, resId) => {
+    const updated = { ...item, reservations: (item.reservations||[]).filter(r=>r.id!==resId), updatedAt:Date.now() };
+    const res = await saveOneItem(updated);
+    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
+    setConfirmUnreserve(null);
+    toast$("Reservation borttagen","success");
+  };
 
   // Bygg en lista: en post per reservation, med tillhörande artikel
   const allRes = [];
@@ -3664,32 +3766,94 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     groups[key].push(r);
   }
   // Filtrera på sök (regnummer eller kund)
-  let groupKeys = Object.keys(groups).sort();
+  let groupKeys = Object.keys(groups);
   if (search.trim()) {
     const q = search.trim().toLowerCase();
     groupKeys = groupKeys.filter(k =>
-      k.toLowerCase().includes(q) || groups[k].some(r => (r.customer||"").toLowerCase().includes(q))
+      k.toLowerCase().includes(q) || groups[k].some(r => (r.customer||"").toLowerCase().includes(q) || (r.item?.name||"").toLowerCase().includes(q) || (r.item?.oem||"").toLowerCase().includes(q) || (r.item?.stockNumber||"").toLowerCase().includes(q))
     );
   }
-
-  const removeReservation = async (item, resId) => {
-    const updated = { ...item, reservations: (item.reservations||[]).filter(r=>r.id!==resId), updatedAt:Date.now() };
-    const res = await saveOneItem(updated);
-    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
-    setConfirmUnreserve(null);
-    toast$("Reservation borttagen","success");
+  // Snabbfilter
+  const now = Date.now();
+  if (quickFilter==="recent") {
+    groupKeys = groupKeys.filter(k => groups[k].some(r => (now - (r.ts||0)) < 7*864e5)); // senaste 7 dagar
+  } else if (quickFilter==="many") {
+    groupKeys = groupKeys.filter(k => groups[k].length >= 2); // flera delar
+  }
+  // Sortering
+  const groupVal = (k) => {
+    const list = groups[k];
+    switch (sortBy) {
+      case "customer": return (list.find(r=>r.customer)?.customer || "").toLowerCase();
+      case "recent": return Math.max(...list.map(r=>r.ts||0));
+      case "count": return list.length;
+      case "value": return list.reduce((a,r)=>a+(r.item?.price||0),0);
+      default: return k.toLowerCase(); // reg
+    }
   };
+  const NUMERIC = new Set(["recent","count","value"]);
+  groupKeys = groupKeys.sort((a,b) => {
+    const va = groupVal(a), vb = groupVal(b);
+    let cmp;
+    if (NUMERIC.has(sortBy)) cmp = Number(va) - Number(vb);
+    else cmp = String(va).localeCompare(String(vb), "sv", { sensitivity:"base", numeric:true });
+    return sortDir==="asc" ? cmp : -cmp;
+  });
 
   return (
     <Page>
-      <TopBar title="Reservationer" onBack={pop} subtitle={`${allRes.length} reservationer · ${groupKeys.length} bilar`} />
+      <TopBar title="Reservationer" onBack={pop} subtitle={`${allRes.length} reservationer · ${groupKeys.length} bilar`}
+        right={canAdd?<Btn small onClick={()=>setShowNew(true)}><Icon name="plus"/> Ny</Btn>:null} />
       <div style={{padding:"14px 14px 40px"}}>
-        <div style={{marginBottom:14}}>
-          <div style={{position:"relative"}}>
-            <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
-            <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök regnummer eller kund…"
-              style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14}}/>
+        <div style={{marginBottom:10}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{position:"relative",flex:1}}>
+              <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök regnr, kund, del…"
+                style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
+            </div>
+            <button onClick={()=>setShowSort(v=>!v)} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${showSort?B:BD}`,background:showSort?B+"08":WH,color:B,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+              <Icon name="arrow-up-wide-short"/> Sortera
+            </button>
           </div>
+        </div>
+
+        {/* Sorteringspanel */}
+        {showSort&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:10,overflow:"hidden"}}>
+            {[
+              {k:"reg",dir:"asc",l:"Regnummer A–Ö",icon:"arrow-down-a-z"},
+              {k:"reg",dir:"desc",l:"Regnummer Ö–A",icon:"arrow-up-a-z"},
+              {k:"customer",dir:"asc",l:"Kund A–Ö",icon:"user"},
+              {k:"recent",dir:"desc",l:"Senast reserverad",icon:"clock"},
+              {k:"count",dir:"desc",l:"Flest delar först",icon:"layer-group"},
+              {k:"value",dir:"desc",l:"Högst värde först",icon:"tag"},
+            ].map(o=>{
+              const active = sortBy===o.k && sortDir===o.dir;
+              return (
+                <button key={o.k+o.dir} onClick={()=>{setSortBy(o.k);setSortDir(o.dir);setShowSort(false);}}
+                  style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?B+"08":"transparent",border:"none",borderBottom:`1px solid ${BD}40`,cursor:"pointer",textAlign:"left"}}>
+                  <i className={`fa-solid fa-${o.icon}`} style={{color:active?B:MU,fontSize:13,width:16}}/>
+                  <span style={{fontSize:13,fontWeight:active?700:500,color:active?B:TX,flex:1}}>{o.l}</span>
+                  {active&&<Icon name="check" style={{color:B,fontSize:12}}/>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Snabbfilter */}
+        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+          {[
+            {k:"all",l:"Alla"},
+            {k:"recent",l:"Senaste 7 dagar"},
+            {k:"many",l:"Flera delar"},
+          ].map(qf=>(
+            <button key={qf.k} onClick={()=>setQuickFilter(qf.k)}
+              style={{padding:"6px 13px",borderRadius:16,border:`1.5px solid ${quickFilter===qf.k?B:BD}`,background:quickFilter===qf.k?B:WH,color:quickFilter===qf.k?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+              {qf.l}
+            </button>
+          ))}
         </div>
 
         {allRes.length===0?(
@@ -3752,6 +3916,82 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               <Btn full variant="ghost" onClick={()=>setConfirmUnreserve(null)}>Avbryt</Btn>
               <Btn full variant="red" onClick={()=>removeReservation(confirmUnreserve.item, confirmUnreserve.res.id)}>Ta bort</Btn>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ny reservation — flera delar till ett regnummer */}
+      {showNew&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",flexDirection:"column",zIndex:300}}>
+          <div style={{background:WH,borderBottom:`1px solid ${BD}`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={()=>{stopScan();setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
+            <div style={{fontWeight:800,fontSize:16,flex:1}}>Ny reservation</div>
+            <span style={{fontSize:13,color:picked.size?B:MU,fontWeight:700}}>{picked.size} valda</span>
+          </div>
+
+          <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:14}}>
+            <div style={{background:AM+"0C",border:`1px solid ${AM}30`,borderRadius:10,padding:14,marginBottom:14}}>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Regnummer *</label>
+                  <input value={newForm.regNumber} onChange={e=>setNewForm(f=>({...f,regNumber:e.target.value.toUpperCase()}))} placeholder="ABC123" autoFocus
+                    style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"10px 12px",fontSize:15,fontWeight:700,letterSpacing:1,marginTop:4,fontFamily:"monospace",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{flex:1.4}}>
+                  <label style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Kund (valfritt)</label>
+                  <input value={newForm.customer} onChange={e=>setNewForm(f=>({...f,customer:e.target.value}))} placeholder="Namn eller företag"
+                    style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"10px 12px",fontSize:14,marginTop:4,boxSizing:"border-box"}}/>
+                </div>
+              </div>
+              <input value={newForm.note} onChange={e=>setNewForm(f=>({...f,note:e.target.value}))} placeholder="Notering (valfritt) — gäller alla valda delar"
+                style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:7,padding:"9px 12px",fontSize:13,boxSizing:"border-box"}}/>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              <div style={{position:"relative",flex:1}}>
+                <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
+                <input value={pickSearch} onChange={e=>setPickSearch(e.target.value)} placeholder="Sök delar att reservera…"
+                  style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
+              </div>
+              <button onClick={()=>{ if(scanning) stopScan(); else startScan(); }} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${scanning?R:B}`,background:scanning?R:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                <Icon name={scanning?"xmark":"qrcode"}/> {scanning?"Stäng":"Skanna"}
+              </button>
+            </div>
+
+            {/* Kameravy vid skanning */}
+            {scanning&&(
+              <div style={{background:"#000",borderRadius:10,overflow:"hidden",marginBottom:10,position:"relative"}}>
+                <video ref={scanVideoRef} style={{width:"100%",maxHeight:240,objectFit:"cover",display:"block"}} muted playsInline/>
+                <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"55%",aspectRatio:"1",border:`3px solid ${WH}`,borderRadius:12,boxShadow:"0 0 0 2000px rgba(0,0,0,.35)"}}/>
+                <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center",color:WH,fontSize:12,fontWeight:600}}>Rikta kameran mot QR-koden</div>
+              </div>
+            )}
+            {scanError&&<div style={{background:R+"10",border:`1px solid ${R}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:R,marginBottom:10}}>{scanError}</div>}
+            <div style={{fontSize:11,color:MU,marginBottom:10}}>{pickable.length} delar med lediga exemplar</div>
+
+            {pickable.map(item=>{
+              const sel = picked.has(item.id);
+              const free = (item.quantity||0)-((item.reservations&&item.reservations.length)||0);
+              return (
+                <div key={item.id} onClick={()=>togglePick(item.id)} style={{background:WH,borderRadius:8,border:`2px solid ${sel?AM:BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"center",cursor:"pointer"}}>
+                  <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${sel?AM:BD}`,background:sel?AM:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {sel&&<Icon name="check" style={{fontSize:10,color:WH}}/>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.stockNumber?`#${item.stockNumber} `:""}{item.name}{item.side?` — ${item.side}`:""}</div>
+                    <div style={{fontSize:11,color:MU}}>{item.oem||item.sku} · {free} ledig{free!==1?"a":""}</div>
+                  </div>
+                  <div style={{fontWeight:700,color:B,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
+                </div>
+              );
+            })}
+            {pickable.length===0&&<div style={{textAlign:"center",padding:30,color:MU,fontSize:13}}>Inga delar matchar</div>}
+          </div>
+
+          <div style={{background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 20px rgba(0,0,0,.08)"}}>
+            <Btn full variant="red" onClick={saveMultiReservation} disabled={!newForm.regNumber.trim()||picked.size===0}>
+              <Icon name="bookmark"/> Reservera {picked.size} {picked.size===1?"del":"delar"}{newForm.regNumber?` till ${newForm.regNumber}`:""}
+            </Btn>
           </div>
         </div>
       )}
