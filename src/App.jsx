@@ -387,7 +387,9 @@ html,body{height:100%;background:${BG};}
 @media (max-width:768px) and (orientation:landscape){
   .page{padding-bottom:env(safe-area-inset-bottom)!important;}
 }
-/* PWA safe area — sätts via JS nedan */
+/* PWA safe area — alltid, så headern aldrig hamnar under statusfältet/batteriet.
+   På enheter utan notch är env() = 0 och detta gör ingen skillnad. */
+.topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 .pwa-mode .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
@@ -3656,18 +3658,16 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   const [newForm, setNewForm] = useState({ regNumber:"", customer:"", note:"" });
   const [pickSearch, setPickSearch] = useState("");
   const [picked, setPicked] = useState(new Set());
-  const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState(null);
-  const scanVideoRef = useRef(null);
-  const scanReaderRef = useRef(null);
   const canAdd = isAdmin || can("canAddReservations");
-  useEffect(() => () => { if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} } }, []);
 
   if (!isAdmin && !can("canViewReservations")) return <Page><TopBar title="Reservationer" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
 
   const togglePick = id => setPicked(s => { const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
 
-  // ── QR-skanning för att lägga till del i reservationen ──
+  // ── QR via foto — samma teknik som bildtagning (fungerar över HTTP) ──
+  // Vi tar ett foto med enhetens kamera (native), och avkodar QR-koden ur bilden.
+  const scanFileRef = useRef(null);
   const loadZXing = () => new Promise((resolve, reject) => {
     if (window.ZXing) { resolve(window.ZXing); return; }
     const s = document.createElement("script");
@@ -3675,28 +3675,24 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     s.onload = () => resolve(window.ZXing); s.onerror = reject;
     document.head.appendChild(s);
   });
-  const stopScan = () => {
-    if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} scanReaderRef.current = null; }
-    setScanning(false);
-  };
-  const startScan = async () => {
+  const decodePhoto = async (file) => {
+    if (!file) return;
     setScanError(null);
-    if (!navigator.mediaDevices?.getUserMedia) { setScanError("Kameran kräver HTTPS eller localhost."); return; }
     try {
       const ZXing = await loadZXing();
-      const hints = new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      const reader = new ZXing.BrowserMultiFormatReader(hints);
-      scanReaderRef.current = reader;
-      setScanning(true);
-      await reader.decodeFromVideoDevice(null, scanVideoRef.current, (result) => {
-        if (result) handleScan(result.getText());
-      });
-    } catch (err) {
-      let msg = "Kunde inte starta kameran.";
-      if (err?.name === "NotAllowedError") msg = "Kameraåtkomst nekades.";
-      else if (err?.name === "NotFoundError") msg = "Ingen kamera hittades.";
-      else if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") msg = "Kameran kräver HTTPS eller localhost.";
-      setScanError(msg); setScanning(false);
+      const url = URL.createObjectURL(file);
+      const reader = new ZXing.BrowserMultiFormatReader();
+      try {
+        const result = await reader.decodeFromImageUrl(url);
+        handleScan(result.getText());
+      } catch (e) {
+        toast$("Ingen QR-kod hittades i bilden — försök igen","error");
+      } finally {
+        URL.revokeObjectURL(url);
+        try { reader.reset(); } catch {}
+      }
+    } catch (e) {
+      setScanError("Kunde inte läsa QR-koden.");
     }
   };
   const handleScan = (code) => {
@@ -3739,7 +3735,6 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     }
     await saveItems(working);
     toast$(`${picked.size} delar reserverade till ${reg}`,"success");
-    stopScan();
     setShowNew(false); setPicked(new Set()); setNewForm({ regNumber:"", customer:"", note:"" }); setPickSearch("");
   };
 
@@ -3923,13 +3918,13 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
       {/* Ny reservation — flera delar till ett regnummer */}
       {showNew&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",flexDirection:"column",zIndex:300}}>
-          <div style={{background:WH,borderBottom:`1px solid ${BD}`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
-            <button onClick={()=>{stopScan();setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
+          <div className="topbar-safe" style={{background:WH,borderBottom:`1px solid ${BD}`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <button onClick={()=>{setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
             <div style={{fontWeight:800,fontSize:16,flex:1}}>Ny reservation</div>
             <span style={{fontSize:13,color:picked.size?B:MU,fontWeight:700}}>{picked.size} valda</span>
           </div>
 
-          <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:14}}>
+          <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:14,background:BG}}>
             <div style={{background:AM+"0C",border:`1px solid ${AM}30`,borderRadius:10,padding:14,marginBottom:14}}>
               <div style={{display:"flex",gap:10,marginBottom:10}}>
                 <div style={{flex:1}}>
@@ -3953,19 +3948,11 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                 <input value={pickSearch} onChange={e=>setPickSearch(e.target.value)} placeholder="Sök delar att reservera…"
                   style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
               </div>
-              <button onClick={()=>{ if(scanning) stopScan(); else startScan(); }} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${scanning?R:B}`,background:scanning?R:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
-                <Icon name={scanning?"xmark":"qrcode"}/> {scanning?"Stäng":"Skanna"}
+              <input ref={scanFileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{decodePhoto(e.target.files[0]); e.target.value="";}}/>
+              <button onClick={()=>scanFileRef.current?.click()} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${B}`,background:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                <Icon name="qrcode"/> Skanna
               </button>
             </div>
-
-            {/* Kameravy vid skanning */}
-            {scanning&&(
-              <div style={{background:"#000",borderRadius:10,overflow:"hidden",marginBottom:10,position:"relative"}}>
-                <video ref={scanVideoRef} style={{width:"100%",maxHeight:240,objectFit:"cover",display:"block"}} muted playsInline/>
-                <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"55%",aspectRatio:"1",border:`3px solid ${WH}`,borderRadius:12,boxShadow:"0 0 0 2000px rgba(0,0,0,.35)"}}/>
-                <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center",color:WH,fontSize:12,fontWeight:600}}>Rikta kameran mot QR-koden</div>
-              </div>
-            )}
             {scanError&&<div style={{background:R+"10",border:`1px solid ${R}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:R,marginBottom:10}}>{scanError}</div>}
             <div style={{fontSize:11,color:MU,marginBottom:10}}>{pickable.length} delar med lediga exemplar</div>
 
