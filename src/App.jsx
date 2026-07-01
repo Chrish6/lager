@@ -3727,7 +3727,7 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
 // ─── Reservations Page — alla reservationer, grupperade per regnummer ─────────
-function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$, addToCart, cart }) {
+function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, pop, toast$, addToCart, setCart, cart }) {
   const [confirmUnreserve, setConfirmUnreserve] = useState(null);
   const [confirmRemoveAll, setConfirmRemoveAll] = useState(null); // {reg, list}
   const [expanded, setExpanded] = useState(new Set());
@@ -3915,9 +3915,22 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   // Lägg alla en bils reserverade delar i kassan på en gång.
   // Reservationerna tas INTE bort nu — de rensas först när köpet slutförs i kassan.
   const sellAllFromRes = async (reg, list) => {
-    for (const r of list) {
-      addToCart?.(r.item, 1, { regNumber: r.regNumber, customer: r.customer, reservationId: r.id });
-    }
+    // Bygg raderna och sätt hela kassan på en gång (synkront) så att
+    // kassasidan har innehållet direkt när vi navigerar dit.
+    const meUser = currentUser?.username || "Okänd";
+    const newRows = list.map(r => ({
+      item: r.item, qty: 1, unitPrice: r.item.price,
+      priceMode: "incl", discountMode: "pct", discountPct: 0, discountKr: 0,
+      regNumber: r.regNumber, customer: r.customer, reservationId: r.id,
+      key: r.item.id + "-" + r.id,
+    }));
+    setCart?.(prev => {
+      const existingIds = new Set((prev||[]).map(x=>x.item.id));
+      const toAdd = newRows.filter(x=>!existingIds.has(x.item.id));
+      return [...(prev||[]), ...toAdd];
+    });
+    // Försök låsa delarna (bästa-försök, blockerar inte navigeringen)
+    list.forEach(r => { try { lockAcquire(r.item.id, meUser, "cart"); } catch {} });
     toast$(`${list.length} delar för ${reg} lades i kassan`,"success");
     push("checkout");
   };
