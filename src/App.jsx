@@ -3722,6 +3722,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   const scanFileRef = useRef(null);
   const scanVideoRef = useRef(null);
   const scanReaderRef = useRef(null);
+  const isMobile = useIsMobile();
   const canAdd = isAdmin || can("canAddReservations");
   useEffect(() => () => { if (scanReaderRef.current) { try { scanReaderRef.current.reset(); } catch {} } }, []);
 
@@ -3871,6 +3872,16 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     toast$("Reservation borttagen","success");
   };
 
+  // Sälj direkt från reservationssidan — tar bort reservationen och öppnar säljflödet
+  const sellFromRes = async (r) => {
+    const item = r.item;
+    const remaining = (item.reservations||[]).filter(x=>x.id!==r.id);
+    const updated = { ...item, reservations: remaining, updatedAt:Date.now() };
+    const res = await saveOneItem(updated);
+    if (res) saveItems(res); else await saveItems(items.map(i=>i.id===item.id?updated:i));
+    push("sell", { item:updated, maxQty:1, presetBuyer: r.customer || r.regNumber });
+  };
+
   // Bygg en lista: en post per reservation, med tillhörande artikel
   const allRes = [];
   for (const it of items) {
@@ -3989,34 +4000,33 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
             {groupKeys.map(reg=>{
               const list = groups[reg];
               const customer = list.find(r=>r.customer)?.customer;
+              const total = list.reduce((a,r)=>a+(r.item?.price||0),0);
+              const canSell = isAdmin || can("canSell");
+              const canEditRes = isAdmin || can("canEditReservations");
               return (
                 <div key={reg} style={{background:WH,borderRadius:12,border:`1.5px solid ${AM}40`,overflow:"hidden"}}>
-                  {/* Bil-header */}
-                  <div style={{background:AM+"12",padding:"12px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${AM}25`}}>
-                    <span style={{background:AM,color:WH,borderRadius:6,padding:"4px 12px",fontSize:17,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
-                    {customer&&<span style={{fontSize:14,fontWeight:700,color:TX}}>{customer}</span>}
-                    <span style={{marginLeft:"auto",fontSize:12,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</span>
+                  {/* Bil-header med totalpris */}
+                  <div style={{background:AM+"12",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${AM}25`}}>
+                    <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
+                    {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
+                    <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
+                      <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"} · totalt</div>
+                    </div>
                   </div>
-                  {/* Delar reserverade till denna bil */}
-                  <div style={{padding:"6px 14px 10px"}}>
+                  {/* Kompakta rader: bara det viktigaste */}
+                  <div>
                     {list.map(r=>(
-                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${BD}40`}}>
+                      <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderBottom:`1px solid ${BD}30`}}>
                         <div onClick={()=>push("detail",{item:r.item})} style={{flex:1,minWidth:0,cursor:"pointer"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                            {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 7px",fontSize:11,fontWeight:800}}>#{r.item.stockNumber}</span>}
-                            <span style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
-                          </div>
-                          {r.item.oem&&<div style={{fontSize:13,fontWeight:700,color:TX,fontFamily:"monospace"}}>{r.item.oem}</div>}
-                          {r.note&&<div style={{fontSize:12,color:TM,marginTop:2}}>{r.note}</div>}
-                          <div style={{fontSize:10,color:MU,marginTop:2}}>Reserverad av {r.by} · {new Date(r.ts).toLocaleDateString("sv-SE")}</div>
-                        </div>
-                        <div style={{textAlign:"right",flexShrink:0}}>
-                          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:800,color:B}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</div>
-                          <div style={{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}}>
-                            <Btn small variant="ghost" onClick={()=>push("detail",{item:r.item})}><Icon name="eye"/></Btn>
-                            {(can("canEditReservations")||isAdmin)&&<Btn small variant="ghost" onClick={()=>setConfirmUnreserve({item:r.item, res:r})} style={{color:R}}><Icon name="xmark"/></Btn>}
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
+                            <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
                           </div>
                         </div>
+                        <span style={{fontWeight:800,fontSize:14,color:B,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
+                        {canSell&&<button onClick={()=>sellFromRes(r)} title="Sälj" style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,background:R,color:WH,border:"none",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="tag"/>{!isMobile&&" Sälj"}</button>}
+                        {canEditRes&&<button onClick={()=>setConfirmUnreserve({item:r.item, res:r})} title="Ta bort reservation" style={{flexShrink:0,background:"none",border:"none",color:R,cursor:"pointer",padding:"6px 8px",fontSize:14}}><Icon name="xmark"/></button>}
                       </div>
                     ))}
                   </div>
