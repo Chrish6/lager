@@ -1492,6 +1492,7 @@ function QrLabelsPage({ items, pop, preSelected }) {
   const barcodeUrl = (text) => `https://barcodeapi.org/api/128/${encodeURIComponent(text)}`;
 
   const LABEL_TYPES = [
+    { k:"a5",        l:"A5 — Stor etikett",  desc:"En per A5-sida: stort artikelnr, stort lagernr, QR" },
     { k:"qr_full",   l:"QR — Fullständig",  desc:"QR-kod + namn + lagernr + artikelnr" },
     { k:"qr_mini",   l:"QR — Mini",          desc:"Liten QR + lagernr" },
     { k:"barcode",   l:"Streckkod",          desc:"Code128 + lagernr + artikelnr" },
@@ -1504,6 +1505,59 @@ function QrLabelsPage({ items, pop, preSelected }) {
     if (toPrint.length===0) return;
 
     let labelHtml = "";
+    if (labelType==="a5") {
+      labelHtml = toPrint.map(i=>`<div class="a5label">
+        <div class="a5-top">
+          <div class="a5-name">${i.name}${i.side?" — "+i.side:""}</div>
+          ${i.make?`<div class="a5-make">${i.make}${i.model?" "+i.model:""}${i.yearFrom?" ("+i.yearFrom+(i.yearTo?"–"+i.yearTo:"")+")":""}</div>`:""}
+        </div>
+        <div class="a5-mid">
+          <div class="a5-fields">
+            <div class="a5-field">
+              <div class="a5-flabel">ARTIKELNUMMER</div>
+              <div class="a5-art">${i.oem||"—"}</div>
+            </div>
+            <div class="a5-field">
+              <div class="a5-flabel">LAGERNUMMER</div>
+              <div class="a5-stock">#${i.stockNumber||"—"}</div>
+            </div>
+          </div>
+          <div class="a5-qr">
+            <img src="${qrUrl(i.oem||i.stockNumber||i.id)}"/>
+            <div class="a5-qrtext">Skanna</div>
+          </div>
+        </div>
+        <div class="a5-bot">
+          ${i.category?`<span class="a5-tag">${i.category}</span>`:""}
+          ${i.condition?`<span class="a5-tag">${i.condition}</span>`:""}
+          ${i.location?`<span class="a5-tag">📍 ${i.locationType?i.locationType+" ":""}${i.location}</span>`:""}
+        </div>
+      </div>`).join("");
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>A5-etiketter</title>
+      <style>
+        @page{size:A5;margin:0}
+        *{box-sizing:border-box}
+        body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0}
+        .a5label{width:148mm;height:210mm;padding:14mm 12mm;page-break-after:always;display:flex;flex-direction:column;color:#141820}
+        .a5-top{border-bottom:3px solid #1B3A6B;padding-bottom:6mm;margin-bottom:8mm}
+        .a5-name{font-size:30px;font-weight:800;color:#1B3A6B;line-height:1.1}
+        .a5-make{font-size:16px;color:#555;margin-top:3mm}
+        .a5-mid{flex:1;display:flex;gap:8mm;align-items:flex-start}
+        .a5-fields{flex:1;min-width:0}
+        .a5-field{margin-bottom:12mm}
+        .a5-flabel{font-size:12px;font-weight:700;color:#888;letter-spacing:2px;margin-bottom:2mm}
+        .a5-art{font-size:44px;font-weight:900;font-family:'Courier New',monospace;color:#141820;word-break:break-all;line-height:1}
+        .a5-stock{font-size:64px;font-weight:900;color:#CC1B2B;line-height:1}
+        .a5-qr{text-align:center;flex-shrink:0}
+        .a5-qr img{width:44mm;height:44mm}
+        .a5-qrtext{font-size:12px;color:#888;margin-top:2mm;letter-spacing:1px}
+        .a5-bot{border-top:2px solid #eee;padding-top:5mm;display:flex;gap:4mm;flex-wrap:wrap}
+        .a5-tag{background:#EEF2F8;color:#1B3A6B;border-radius:5px;padding:2mm 4mm;font-size:13px;font-weight:600}
+      </style></head><body>${labelHtml}
+      <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},500);});</script></body></html>`;
+      printHtml(html);
+      return;
+    }
     if (labelType==="qr_full") {
       labelHtml = toPrint.map(i=>`<div class="label"><img src="${qrUrl(i.oem||i.stockNumber)}" style="width:90px;height:90px"/><div class="name">${i.name}${i.side?" — "+i.side:""}</div><div class="row-info"><span class="badge">#${i.stockNumber||"—"}</span></div><div class="art">${i.oem||"—"}</div></div>`).join("");
     } else if (labelType==="qr_mini") {
@@ -3661,7 +3715,8 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   const [pickSort, setPickSort] = useState("stockNumber"); // stockNumber | name | price | category
   const [pickSortDir, setPickSortDir] = useState("asc");
   const [pickShowSort, setPickShowSort] = useState(false);
-  const [pickCat, setPickCat] = useState(""); // filter på kategori
+  const [pickShowFilter, setPickShowFilter] = useState(false);
+  const [pickFilters, setPickFilters] = useState({ cats:[], conds:[], sides:[], make:"", model:"", supplier:"", locationType:"", priceMin:"", priceMax:"" });
   const [scanError, setScanError] = useState(null);
   const [scanning, setScanning] = useState(false);
   const scanFileRef = useRef(null);
@@ -3745,10 +3800,20 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
   };
 
   // Delar som går att reservera (har minst ett ledigt exemplar)
+  const pf = pickFilters;
+  const pfActive = pf.cats.length+pf.conds.length+pf.sides.length + (pf.make?1:0)+(pf.model?1:0)+(pf.supplier?1:0)+(pf.locationType?1:0)+(pf.priceMin!==""?1:0)+(pf.priceMax!==""?1:0);
   let pickable = items.filter(i => {
     const free = (i.quantity||0) - ((i.reservations&&i.reservations.length)||0);
     if (free <= 0) return false;
-    if (pickCat && i.category !== pickCat) return false;
+    if (pf.cats.length && !pf.cats.includes(i.category)) return false;
+    if (pf.conds.length && !pf.conds.includes(i.condition)) return false;
+    if (pf.sides.length && !pf.sides.includes(i.side)) return false;
+    if (pf.make && i.make!==pf.make) return false;
+    if (pf.model && i.model!==pf.model) return false;
+    if (pf.supplier && i.supplier!==pf.supplier) return false;
+    if (pf.locationType && i.locationType!==pf.locationType) return false;
+    if (pf.priceMin!=="" && (i.price||0)<Number(pf.priceMin)) return false;
+    if (pf.priceMax!=="" && (i.price||0)>Number(pf.priceMax)) return false;
     if (!pickSearch.trim()) return true;
     const q = pickSearch.trim().toLowerCase();
     return [i.name,i.sku,i.oem,i.stockNumber,i.category,i.side,i.location,i.regNumber,i.make,i.model].some(f=>f?.toLowerCase().includes(q));
@@ -3762,8 +3827,17 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
     let cmp = PICK_NUMERIC.has(pickSort) ? Number(va)-Number(vb) : String(va).localeCompare(String(vb),"sv",{sensitivity:"base",numeric:true});
     return pickSortDir==="asc" ? cmp : -cmp;
   });
-  // Kategorier som finns bland valbara delar (för filterknappar)
-  const pickCats = [...new Set(items.filter(i=>((i.quantity||0)-((i.reservations&&i.reservations.length)||0))>0).map(i=>i.category).filter(Boolean))].sort();
+  // Alternativ för filterväljare (bland delar med lediga exemplar)
+  const freeItems = items.filter(i=>((i.quantity||0)-((i.reservations&&i.reservations.length)||0))>0);
+  const pickCats = [...new Set(freeItems.map(i=>i.category).filter(Boolean))].sort();
+  const pickConds = [...new Set(freeItems.map(i=>i.condition).filter(Boolean))].sort();
+  const pickSides = [...new Set(freeItems.map(i=>i.side).filter(Boolean))].sort();
+  const pickMakes = [...new Set(freeItems.map(i=>i.make).filter(Boolean))].sort();
+  const pickModels = [...new Set(freeItems.map(i=>i.model).filter(Boolean))].sort();
+  const pickSuppliers = [...new Set(freeItems.map(i=>i.supplier).filter(Boolean))].sort();
+  const pickLocTypes = [...new Set(freeItems.map(i=>i.locationType).filter(Boolean))].sort();
+  const togglePF = (key,val) => setPickFilters(p=>({...p,[key]:p[key].includes(val)?p[key].filter(x=>x!==val):[...p[key],val]}));
+  const clearPF = () => setPickFilters({ cats:[], conds:[], sides:[], make:"", model:"", supplier:"", locationType:"", priceMin:"", priceMax:"" });
 
   const saveMultiReservation = async () => {
     if (!newForm.regNumber.trim()) { toast$("Ange registreringsnummer","error"); return; }
@@ -4020,10 +4094,13 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               </div>
             )}
 
-            {/* Sortera + kategorifilter */}
+            {/* Sortera + Filtrera */}
             <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-              <button onClick={()=>setPickShowSort(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pickShowSort?B:BD}`,background:pickShowSort?B+"08":WH,color:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
+              <button onClick={()=>{setPickShowSort(v=>!v);setPickShowFilter(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pickShowSort?B:BD}`,background:pickShowSort?B+"08":WH,color:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
                 <Icon name="arrow-up-wide-short"/> Sortera
+              </button>
+              <button onClick={()=>{setPickShowFilter(v=>!v);setPickShowSort(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pfActive?B:BD}`,background:pfActive?B:(pickShowFilter?B+"08":WH),color:pfActive?WH:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
+                <Icon name="filter"/> Filter{pfActive?` (${pfActive})`:""}
               </button>
               <div style={{fontSize:11,color:MU,marginLeft:"auto"}}>{pickable.length} delar · {picked.size} valda</div>
             </div>
@@ -4051,13 +4128,35 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               </div>
             )}
 
-            {/* Kategorifilter — chips */}
-            {pickCats.length>0&&(
-              <div style={{display:"flex",gap:6,marginBottom:10,overflowX:"auto",paddingBottom:4}}>
-                <button onClick={()=>setPickCat("")} style={{flexShrink:0,padding:"5px 12px",borderRadius:16,border:`1.5px solid ${!pickCat?B:BD}`,background:!pickCat?B:WH,color:!pickCat?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer"}}>Alla</button>
-                {pickCats.map(c=>(
-                  <button key={c} onClick={()=>setPickCat(c===pickCat?"":c)} style={{flexShrink:0,padding:"5px 12px",borderRadius:16,border:`1.5px solid ${pickCat===c?B:BD}`,background:pickCat===c?B:WH,color:pickCat===c?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>{c}</button>
-                ))}
+            {/* Filterpanel — samma fält som lagrets filter */}
+            {pickShowFilter&&(
+              <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:8,padding:"12px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontSize:12,fontWeight:700,color:B}}>Filtrera delar</span>
+                  {pfActive>0&&<button onClick={clearPF} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:12,cursor:"pointer"}}>Rensa filter</button>}
+                </div>
+                {pickCats.length>0&&(<>
+                  <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"8px 0 5px"}}>Kategori</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickCats.map(c=><button key={c} onClick={()=>togglePF("cats",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.cats.includes(c)?B:BD}`,background:pf.cats.includes(c)?B:WH,color:pf.cats.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                </>)}
+                {pickConds.length>0&&(<>
+                  <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"10px 0 5px"}}>Skick</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickConds.map(c=><button key={c} onClick={()=>togglePF("conds",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.conds.includes(c)?B:BD}`,background:pf.conds.includes(c)?B:WH,color:pf.conds.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                </>)}
+                {pickSides.length>0&&(<>
+                  <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"10px 0 5px"}}>Sida</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickSides.map(c=><button key={c} onClick={()=>togglePF("sides",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.sides.includes(c)?B:BD}`,background:pf.sides.includes(c)?B:WH,color:pf.sides.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                </>)}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+                  {pickMakes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Märke</div><select value={pf.make} onChange={e=>setPickFilters(p=>({...p,make:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.make?B:BD}`,borderRadius:7,fontSize:12,color:pf.make?B:MU,background:WH,fontWeight:pf.make?600:400}}><option value="">Alla märken</option>{pickMakes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickModels.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Modell</div><select value={pf.model} onChange={e=>setPickFilters(p=>({...p,model:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.model?B:BD}`,borderRadius:7,fontSize:12,color:pf.model?B:MU,background:WH,fontWeight:pf.model?600:400}}><option value="">Alla modeller</option>{pickModels.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickSuppliers.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Leverantör</div><select value={pf.supplier} onChange={e=>setPickFilters(p=>({...p,supplier:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.supplier?B:BD}`,borderRadius:7,fontSize:12,color:pf.supplier?B:MU,background:WH,fontWeight:pf.supplier?600:400}}><option value="">Alla</option>{pickSuppliers.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickLocTypes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Placeringstyp</div><select value={pf.locationType} onChange={e=>setPickFilters(p=>({...p,locationType:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.locationType?B:BD}`,borderRadius:7,fontSize:12,color:pf.locationType?B:MU,background:WH,fontWeight:pf.locationType?600:400}}><option value="">Alla</option>{pickLocTypes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
+                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris från</div><input type="number" inputMode="numeric" value={pf.priceMin} onChange={e=>setPickFilters(p=>({...p,priceMin:e.target.value}))} placeholder="0" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMin!==""?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris till</div><input type="number" inputMode="numeric" value={pf.priceMax} onChange={e=>setPickFilters(p=>({...p,priceMax:e.target.value}))} placeholder="∞" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMax!==""?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
+                </div>
               </div>
             )}
             {pickable.map(item=>{
@@ -4756,6 +4855,8 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
     return String(n);
   };
   const [f, setF] = useState(item ? {...item} : {name:"",stockNumber:nextStockNumber(),side:"",category:"Skärmar",quantity:1,price:0,costPrice:0,supplier:"",location:"",weight:"",colorCode:"",oem:"",description:"",condition:"Begagnad - Gott skick",compatible:"",make:"",model:"",yearFrom:"",yearTo:"",regNumber:"",notes:"",images:[]});
+  // Pris exkl. moms (härlett från lagrat inkl-moms-pris; 25% moms)
+  const [priceExVat, setPriceExVat] = useState(item && item.price ? String(Math.round(item.price/1.25)) : "");
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const fRef = useRef(); const cRef = useRef();
 
@@ -4999,8 +5100,24 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
         {/* Pricing + stock */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Pris &amp; lager</div>
-          <G2><H><Inp label="Pris (kr)" type="number" min="0" value={f.price} onChange={e=>set("price",Number(e.target.value))}/></H><H><Inp label="Inköpspris (kr)" type="number" min="0" value={f.costPrice} onChange={e=>set("costPrice",Number(e.target.value))}/></H></G2>
-          <G2><H><Inp label="Antal" type="number" min="0" value={f.quantity} onChange={e=>set("quantity",Number(e.target.value))}/></H><H><Inp label="Enhet" value={f.unit||"st"} onChange={e=>set("unit",e.target.value)}/></H></G2>
+          {/* Pris: skriv ex moms → systemet räknar ut försäljningspris (ink moms 25%) */}
+          <div style={{background:B+"06",border:`1px solid ${B}20`,borderRadius:8,padding:12,marginBottom:10}}>
+            <G2>
+              <H>
+                <Inp label="Pris exkl. moms (kr)" type="number" min="0" value={priceExVat}
+                  onChange={e=>{ const ex=Number(e.target.value)||0; setPriceExVat(e.target.value); set("price", Math.round(ex*1.25)); }}/>
+              </H>
+              <H>
+                <Inp label="Försäljningspris inkl. moms (kr)" type="number" min="0" value={f.price}
+                  onChange={e=>{ const inc=Number(e.target.value)||0; set("price", inc); setPriceExVat(inc? String(Math.round(inc/1.25)) : ""); }}/>
+              </H>
+            </G2>
+            <div style={{fontSize:11,color:MU,marginTop:6}}>
+              Skriv priset <strong>exkl. moms</strong> — försäljningspriset (inkl. 25% moms) räknas ut automatiskt. Moms: {f.price?Math.round(f.price - f.price/1.25).toLocaleString("sv-SE"):0} kr
+            </div>
+          </div>
+          <G2><H><Inp label="Inköpspris exkl. moms (kr)" type="number" min="0" value={f.costPrice} onChange={e=>set("costPrice",Number(e.target.value))}/></H><H><Inp label="Antal" type="number" min="0" value={f.quantity} onChange={e=>set("quantity",Number(e.target.value))}/></H></G2>
+          <G2><H><Inp label="Enhet" value={f.unit||"st"} onChange={e=>set("unit",e.target.value)}/></H><H/></G2>
         </div>
 
         {/* Details */}
