@@ -548,7 +548,7 @@ function useIsMobile() {
 }
 
 // ─── Desktop Sidebar ──────────────────────────────────────────────────────────
-function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSession, toast$, cart }) {
+function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSession, toast$, cart, settings }) {
   const cartCount = (cart||[]).reduce((a,r)=>a+r.qty,0);
   const [netInfo, setNetInfo] = useState(null);
 
@@ -556,7 +556,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     fetch("/api/network").then(r=>r.json()).then(setNetInfo).catch(()=>{});
   }, []);
 
-  const navItems = [
+  let navItems = [
     { icon:"house",        label:"Lager",          route:"inventory",  always:true },
     { icon:"cart-shopping",label:"Kassa",          route:"checkout",   show:(can("canUseCheckout")||isAdmin), badge:cartCount },
     { icon:"chart-line",   label:"Dashboard",      route:"dashboard",  show:(isAdmin||can("canViewDashboard")) },
@@ -574,6 +574,17 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     { icon:"rotate",       label:"Backup",         route:"backup",     show:(isAdmin||can("canBackup")) },
     { icon:"sliders",      label:"Inställningar",  route:"settings",   show:(isAdmin||can("canManageSettings")) },
   ].filter(i => i.always || i.show);
+
+  // Applicera användarens meny-layout (ordning + dolda) från inställningarna
+  const layout = settings?.menuLayout || {};
+  const hidden = new Set(layout.hidden || []);
+  const order = layout.order || [];
+  // Lager och Inställningar går aldrig att dölja (så man inte låser sig ute)
+  navItems = navItems.filter(i => i.route==="inventory" || i.route==="settings" || !hidden.has(i.route));
+  if (order.length) {
+    const idx = r => { const p = order.indexOf(r); return p===-1 ? 999 : p; };
+    navItems = [...navItems].sort((a,b) => idx(a.route) - idx(b.route));
+  }
 
   const active = stack[stack.length-1]?.name;
 
@@ -920,7 +931,7 @@ function AppInner() {
         {/* Desktop sidebar */}
         {showSidebar && (
           <div style={{width:220,flexShrink:0,background:WH,borderRight:`1px solid ${BD}`,overflowY:"auto"}}>
-            <Sidebar currentUser={currentUser} isAdmin={isAdmin} can={can} push={name=>push(name)} currentPage={current.name} stack={stack} setSession={setSession} toast$={toast$} cart={cart}/>
+            <Sidebar currentUser={currentUser} isAdmin={isAdmin} can={can} push={name=>push(name)} currentPage={current.name} stack={stack} setSession={setSession} toast$={toast$} cart={cart} settings={settings}/>
           </div>
         )}
 
@@ -937,6 +948,7 @@ function AppInner() {
           {current.name === "users"        && <UsersPage        {...sharedProps} />}
           {current.name === "roles"        && <RolesPage        {...sharedProps} />}
           {current.name === "managelists"  && <ManageListsPage  {...sharedProps} />}
+          {current.name === "menulayout"    && <MenuLayoutPage   {...sharedProps} />}
           {current.name === "editrole"     && <EditRolePage     {...sharedProps} {...current.props} />}
           {current.name === "edituser"     && <EditUserPage     {...sharedProps} {...current.props} />}
           {current.name === "perms"        && <PermsPage        {...sharedProps} {...current.props} />}
@@ -2413,6 +2425,9 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
             <button onClick={()=>push("managelists")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="list-check" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Hantera listor (kategorier, skick m.m.)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
+            <button onClick={()=>push("menulayout")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
+              <Icon name="bars-staggered" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Meny-layout (ordna &amp; dölj)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+            </button>
             <button onClick={()=>push("backup")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="rotate" style={{color:B}}/> <span style={{fontSize:13,fontWeight:600}}>Backup & Återställning</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
@@ -3082,7 +3097,7 @@ const gridComponents = {
 };
 
 // ─── Inventory Page ───────────────────────────────────────────────────────────
-function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, cart, addToCart }) {
+function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, cart, addToCart, settings }) {
   const [showSort, setShowSort] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const setFilters = applyFilters;
@@ -3210,7 +3225,8 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               </div>
             </div>
             {/* Menu items */}
-            {[
+            {(() => {
+              let mItems = [
               {icon:"house",         label:"Lager",          route:"inventory",   show:true},
               {icon:"cart-shopping", label:"Kassa",          route:"checkout",    show:isAdmin||can("canUseCheckout")},
               {icon:"chart-line",    label:"Dashboard",      route:"dashboard",   show:isAdmin||can("canViewDashboard")},
@@ -3227,7 +3243,14 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               {icon:"users",         label:"Användare",      route:"users",       show:isAdmin||can("canManageUsers")},
               {icon:"rotate",        label:"Backup",         route:"backup",      show:isAdmin||can("canBackup")},
               {icon:"sliders",       label:"Inställningar",  route:"settings",    show:isAdmin||can("canManageSettings")},
-            ].filter(m=>m.show).map(m=>(
+              ].filter(m=>m.show);
+              const layout = settings?.menuLayout || {};
+              const hidden = new Set(layout.hidden || []);
+              const order = layout.order || [];
+              mItems = mItems.filter(m => m.route==="inventory" || m.route==="settings" || !hidden.has(m.route));
+              if (order.length) { const idx=r=>{const p=order.indexOf(r);return p===-1?999:p;}; mItems=[...mItems].sort((a,b)=>idx(a.route)-idx(b.route)); }
+              return mItems;
+            })().map(m=>(
               <button key={m.route} onClick={()=>{setMenuOpen(false); if(m.route!=="inventory") push(m.route);}}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderRadius:0}}>
                 <div style={{width:36,height:36,borderRadius:9,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -5887,6 +5910,102 @@ function UsersPage({ users, saveUsers, roles, currentUser, push, pop, toast$, ca
 }
 
 // ─── Hantera listor — redigera kategorier, skick, sidor, placeringstyper ──────
+function MenuLayoutPage({ settings, saveSettings, pop, toast$, isAdmin, can }) {
+  if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="Meny-layout" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+
+  // Alla menyval (samma routes som i menyn). inventory + settings kan inte döljas.
+  const ALL = [
+    { route:"inventory",  label:"Lager",         icon:"house",              locked:true },
+    { route:"checkout",   label:"Kassa",         icon:"cart-shopping" },
+    { route:"dashboard",  label:"Dashboard",     icon:"chart-line" },
+    { route:"reports",    label:"Rapporter",     icon:"chart-line" },
+    { route:"saleslog",   label:"Säljlogg",      icon:"list" },
+    { route:"reservations", label:"Reservationer", icon:"bookmark" },
+    { route:"activitylog", label:"Aktivitetslogg", icon:"clock-rotate-left" },
+    { route:"scan",       label:"Skanna",        icon:"qrcode" },
+    { route:"import",     label:"Importera",     icon:"file-import" },
+    { route:"bulkedit",   label:"Massredigera",  icon:"layer-group" },
+    { route:"qrlabels",   label:"Etiketter",     icon:"qrcode" },
+    { route:"locationview", label:"Platser",     icon:"location-dot" },
+    { route:"suppliers",  label:"Leverantörer",  icon:"truck" },
+    { route:"users",      label:"Användare",     icon:"users" },
+    { route:"backup",     label:"Backup",        icon:"rotate" },
+    { route:"settings",   label:"Inställningar", icon:"sliders", locked:true },
+  ];
+  const byRoute = Object.fromEntries(ALL.map(x=>[x.route,x]));
+
+  const layout = settings?.menuLayout || {};
+  // Bygg initial ordning: sparad ordning först, sedan resten
+  const initialOrder = () => {
+    const saved = (layout.order||[]).filter(r=>byRoute[r]);
+    const rest = ALL.map(x=>x.route).filter(r=>!saved.includes(r));
+    return [...saved, ...rest];
+  };
+  const [order, setOrder] = useState(initialOrder);
+  const [hidden, setHidden] = useState(new Set(layout.hidden||[]));
+
+  const move = (i, dir) => {
+    setOrder(o => {
+      const n=[...o]; const j=i+dir;
+      if (j<0||j>=n.length) return o;
+      [n[i],n[j]]=[n[j],n[i]];
+      return n;
+    });
+  };
+  const toggleHide = (route) => {
+    if (byRoute[route]?.locked) return;
+    setHidden(h => { const n=new Set(h); n.has(route)?n.delete(route):n.add(route); return n; });
+  };
+
+  const save = async () => {
+    await saveSettings({ ...settings, menuLayout: { order, hidden: [...hidden] } });
+    toast$("Meny-layout sparad","success");
+    pop();
+  };
+  const reset = async () => {
+    setOrder(ALL.map(x=>x.route));
+    setHidden(new Set());
+  };
+
+  return (
+    <Page flush noAnim>
+      <TopBar title="Meny-layout" onBack={pop} subtitle="Ordna och dölj menyval"
+        right={<button onClick={reset} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:13,cursor:"pointer"}}>Återställ</button>}/>
+      <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 14px 20px"}}>
+        <div style={{fontSize:13,color:MU,marginBottom:14}}>Använd pilarna för att ändra ordning och ögat för att dölja/visa. Lager och Inställningar kan inte döljas. Ändringarna gäller för alla enheter.</div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {order.map((route,i)=>{
+            const item = byRoute[route];
+            if (!item) return null;
+            const isHidden = hidden.has(route);
+            return (
+              <div key={route} style={{display:"flex",alignItems:"center",gap:10,background:WH,borderRadius:9,border:`1.5px solid ${isHidden?BD:B+"30"}`,padding:"10px 12px",opacity:isHidden?0.55:1}}>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  <button onClick={()=>move(i,-1)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?BD:B,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-up"/></button>
+                  <button onClick={()=>move(i,1)} disabled={i===order.length-1} style={{background:"none",border:"none",cursor:i===order.length-1?"default":"pointer",color:i===order.length-1?BD:B,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-down"/></button>
+                </div>
+                <div style={{width:32,height:32,borderRadius:8,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon name={item.icon} style={{color:B,fontSize:14}}/>
+                </div>
+                <span style={{flex:1,fontWeight:600,fontSize:14,color:isHidden?MU:TX}}>{item.label}{item.locked&&<span style={{fontSize:10,color:MU,marginLeft:6,fontWeight:500}}>(kan ej döljas)</span>}</span>
+                <button onClick={()=>toggleHide(route)} disabled={item.locked} title={isHidden?"Visa":"Dölj"}
+                  style={{background:"none",border:"none",cursor:item.locked?"default":"pointer",color:item.locked?BD:(isHidden?R:B),fontSize:16,padding:6}}>
+                  <i className={`fa-solid ${isHidden?"fa-eye-slash":"fa-eye"}`}/>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{flexShrink:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))"}}>
+        <Btn full variant="red" onClick={save}><Icon name="check"/> Spara layout</Btn>
+      </div>
+    </Page>
+  );
+}
+
 function ManageListsPage({ lists, saveLists, pop, toast$, isAdmin, can }) {
   if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="Hantera listor" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [local, setLocal] = useState({
