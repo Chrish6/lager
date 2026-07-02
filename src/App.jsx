@@ -2264,6 +2264,33 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
   const topProfit = [...itemMarginList].sort((a,b)=>b.profit-a.profit).slice(0,5);
   const lowMargin  = [...itemMarginList].filter(x=>x.rev>0).sort((a,b)=>a.margin-b.margin).slice(0,5);
 
+  // ── Jämförelse: denna månad vs föregående, samt detta år vs föregående ──
+  // Beräknas alltid på ALLA försäljningar (oberoende av periodväljaren ovan).
+  const sumRange = (start, end) => {
+    const inRange = (sales||[]).filter(s => s.soldAt >= start && s.soldAt < end);
+    return {
+      rev: inRange.reduce((a,s)=>a+s.total,0),
+      profit: inRange.reduce((a,s)=>a+(s.profit||0),0),
+      count: inRange.length,
+    };
+  };
+  const today = new Date();
+  const startOfMonth = (y,m) => new Date(y,m,1).getTime();
+  const thisMonthStart = startOfMonth(today.getFullYear(), today.getMonth());
+  const nextMonthStart = startOfMonth(today.getFullYear(), today.getMonth()+1);
+  const prevMonthStart = startOfMonth(today.getFullYear(), today.getMonth()-1);
+  const thisMonth = sumRange(thisMonthStart, nextMonthStart);
+  const prevMonth = sumRange(prevMonthStart, thisMonthStart);
+
+  const startOfYear = y => new Date(y,0,1).getTime();
+  const thisYearStart = startOfYear(today.getFullYear());
+  const nextYearStart = startOfYear(today.getFullYear()+1);
+  const prevYearStart = startOfYear(today.getFullYear()-1);
+  const thisYear = sumRange(thisYearStart, nextYearStart);
+  const prevYear = sumRange(prevYearStart, thisYearStart);
+
+  const pctChange = (cur, prev) => prev>0 ? Math.round((cur-prev)/prev*100) : (cur>0?100:0);
+
   const exportReport = () => {
     const rows = [["Datum","Artikel","Antal","Pris","Rabatt%","Totalt","Vinst","Säljare","Kund","Betalning"]];
     filtered.forEach(s=>rows.push([
@@ -2277,6 +2304,54 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
     a.download=`rapport_${period}_${new Date().toLocaleDateString("sv-SE").replace(/\//g,"-")}.csv`; a.click();
   };
 
+  const exportPdf = () => {
+    const periodLabels = {today:"Idag",week:"Senaste 7 dagarna",month:"Senaste 30 dagarna",year:"Senaste 12 månaderna",all:"Alla tider"};
+    const catRows = catMarginList.map(c=>`<tr><td>${c.cat}</td><td style="text-align:right">${c.rev.toLocaleString("sv-SE")} kr</td><td style="text-align:right;color:${c.profit>=0?'#16a34a':'#CC1B2B'}">${c.profit.toLocaleString("sv-SE")} kr</td><td style="text-align:right">${c.margin}%</td></tr>`).join("");
+    const topRows = topProfit.map((it,i)=>`<tr><td>${i+1}. ${it.oem?it.oem+" — ":""}${it.name}</td><td style="text-align:right">${it.qty} st</td><td style="text-align:right;color:#16a34a;font-weight:700">${it.profit.toLocaleString("sv-SE")} kr</td></tr>`).join("");
+    const lowRows = lowMargin.map((it,i)=>`<tr><td>${it.oem?it.oem+" — ":""}${it.name}</td><td style="text-align:right">${it.qty} st</td><td style="text-align:right">${it.margin}%</td></tr>`).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapport</title>
+    <style>
+      @page{size:A4;margin:16mm}
+      *{box-sizing:border-box}
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#141820;margin:0}
+      h1{font-size:22px;color:#1B3A6B;margin:0 0 2px}
+      .sub{color:#8A90A0;font-size:12px;margin-bottom:18px}
+      .kpis{display:flex;gap:10px;margin-bottom:20px}
+      .kpi{flex:1;border:1px solid #E2E5EA;border-radius:8px;padding:10px}
+      .kpi .l{font-size:9px;font-weight:700;color:#8A90A0;text-transform:uppercase;letter-spacing:.5px}
+      .kpi .v{font-size:19px;font-weight:800;color:#1B3A6B}
+      h2{font-size:13px;color:#1B3A6B;border-bottom:2px solid #1B3A6B;padding-bottom:4px;margin:22px 0 8px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      td,th{padding:6px 4px;border-bottom:1px solid #eee;text-align:left}
+      th{color:#8A90A0;font-size:10px;text-transform:uppercase;font-weight:700}
+      .footer{margin-top:30px;font-size:10px;color:#bbb;text-align:center}
+    </style></head><body>
+      <h1>Lager — Försäljningsrapport</h1>
+      <div class="sub">Period: ${periodLabels[period]} · Genererad ${new Date().toLocaleString("sv-SE")}</div>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Intäkt</div><div class="v">${totalRev.toLocaleString("sv-SE")} kr</div></div>
+        <div class="kpi"><div class="l">Vinst</div><div class="v" style="color:${totalProfit>=0?'#16a34a':'#CC1B2B'}">${totalProfit.toLocaleString("sv-SE")} kr</div></div>
+        <div class="kpi"><div class="l">Marginal</div><div class="v">${margin}%</div></div>
+        <div class="kpi"><div class="l">Affärer</div><div class="v">${filtered.length}</div></div>
+      </div>
+      <h2>Marginal per kategori</h2>
+      <table><tr><th>Kategori</th><th style="text-align:right">Intäkt</th><th style="text-align:right">Vinst</th><th style="text-align:right">Marginal</th></tr>${catRows||'<tr><td colspan="4" style="color:#999">Ingen data</td></tr>'}</table>
+      <h2>Mest lönsamma delar</h2>
+      <table><tr><th>Del</th><th style="text-align:right">Antal</th><th style="text-align:right">Vinst</th></tr>${topRows||'<tr><td colspan="3" style="color:#999">Ingen data</td></tr>'}</table>
+      <h2>Lägst marginal</h2>
+      <table><tr><th>Del</th><th style="text-align:right">Antal</th><th style="text-align:right">Marginal</th></tr>${lowRows||'<tr><td colspan="3" style="color:#999">Ingen data</td></tr>'}</table>
+      <h2>Jämförelse</h2>
+      <table>
+        <tr><th></th><th style="text-align:right">Denna period</th><th style="text-align:right">Föregående</th><th style="text-align:right">Förändring</th></tr>
+        <tr><td>Denna månad</td><td style="text-align:right">${thisMonth.rev.toLocaleString("sv-SE")} kr</td><td style="text-align:right">${prevMonth.rev.toLocaleString("sv-SE")} kr</td><td style="text-align:right;font-weight:700">${pctChange(thisMonth.rev,prevMonth.rev)>=0?'+':''}${pctChange(thisMonth.rev,prevMonth.rev)}%</td></tr>
+        <tr><td>Detta år</td><td style="text-align:right">${thisYear.rev.toLocaleString("sv-SE")} kr</td><td style="text-align:right">${prevYear.rev.toLocaleString("sv-SE")} kr</td><td style="text-align:right;font-weight:700">${pctChange(thisYear.rev,prevYear.rev)>=0?'+':''}${pctChange(thisYear.rev,prevYear.rev)}%</td></tr>
+      </table>
+      <div class="footer">Lager · Automatiskt genererad rapport · Använd webbläsarens "Spara som PDF" i utskriftsdialogen</div>
+      <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script>
+    </body></html>`;
+    printHtml(html);
+  };
+
   const S = ({l,v,c=TX,sub}) => (
     <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14}}>
       <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>{l}</div>
@@ -2285,9 +2360,46 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
     </div>
   );
 
+  // Jämförelsekort — visar två perioder sida vid sida med förändring i %
+  const CompareCard = ({ title, cur, prev, curLabel, prevLabel }) => {
+    const revPct = pctChange(cur.rev, prev.rev);
+    const profitPct = pctChange(cur.profit, prev.profit);
+    const up = revPct >= 0;
+    return (
+      <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>{title}</div>
+        <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:10}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:MU,marginBottom:2}}>{curLabel}</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:B}}>{cur.rev.toLocaleString("sv-SE")} kr</div>
+            <div style={{fontSize:11,color:MU}}>{cur.count} affärer</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,flexShrink:0}}>
+            <Icon name={up?"arrow-trend-up":"arrow-trend-down"} style={{color:up?GR:R,fontSize:18}}/>
+            <span style={{fontSize:13,fontWeight:800,color:up?GR:R}}>{up?"+":""}{revPct}%</span>
+          </div>
+          <div style={{flex:1,textAlign:"right"}}>
+            <div style={{fontSize:10,color:MU,marginBottom:2}}>{prevLabel}</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:MU}}>{prev.rev.toLocaleString("sv-SE")} kr</div>
+            <div style={{fontSize:11,color:MU}}>{prev.count} affärer</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,paddingTop:10,borderTop:`1px solid ${BD}40`}}>
+          <span style={{color:MU}}>Vinst: <strong style={{color:cur.profit>=0?GR:R}}>{cur.profit.toLocaleString("sv-SE")} kr</strong> vs {prev.profit.toLocaleString("sv-SE")} kr</span>
+          <span style={{fontWeight:700,color:profitPct>=0?GR:R}}>{profitPct>=0?"+":""}{profitPct}%</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Page>
-      <TopBar title="Rapporter" onBack={pop} subtitle="Försäljningsanalys" right={<Btn small onClick={exportReport}><Icon name="file-export"/> Export</Btn>}/>
+      <TopBar title="Rapporter" onBack={pop} subtitle="Försäljningsanalys" right={
+        <div style={{display:"flex",gap:6}}>
+          <Btn small variant="ghost" onClick={exportPdf}><Icon name="file-pdf"/> PDF</Btn>
+          <Btn small onClick={exportReport}><Icon name="file-export"/> CSV</Btn>
+        </div>
+      }/>
       <div style={{padding:"14px 14px 60px"}}>
 
         {/* Period */}
@@ -2306,6 +2418,12 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
           <S l="Antal affärer" v={filtered.length} c={TX}/>
           <S l="Sålda delar" v={totalQty} sub={`Snitt ${avgSale.toLocaleString("sv-SE")} kr/affär`}/>
         </div>
+
+        {/* Jämförelse månad mot månad, år mot år */}
+        <CompareCard title="Denna månad vs föregående" cur={thisMonth} prev={prevMonth}
+          curLabel={today.toLocaleDateString("sv-SE",{month:"long"})} prevLabel={new Date(prevMonthStart).toLocaleDateString("sv-SE",{month:"long"})}/>
+        <CompareCard title="Detta år vs föregående" cur={thisYear} prev={prevYear}
+          curLabel={String(today.getFullYear())} prevLabel={String(today.getFullYear()-1)}/>
 
         {/* Minigraf — senaste 14 dagar */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
@@ -6185,7 +6303,7 @@ function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
   const DEFAULTS = {
     enabled: false, fromEmail: "", appPassword: "", adminEmail: "",
     largePurchaseThreshold: 10000, inactivityDays: 7,
-    notifTypes: { largePurchase:true, inactiveSeller:true, failedLogin:true, serverError:true, backupFailed:true },
+    notifTypes: { largePurchase:true, inactiveSeller:true, failedLogin:true, serverError:true, backupFailed:true, dailySummary:true, weeklySummary:true },
   };
   const [cfg, setCfg] = useState(DEFAULTS);
   const [loading, setLoading] = useState(true);
@@ -6218,6 +6336,8 @@ function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
   };
 
   const NOTIF_TYPES = [
+    { k:"dailySummary", l:"Daglig sammanfattning", desc:"Varje morgon 08:00 — igår sålde ni X för Y kr (skickas bara om det fanns försäljning)", icon:"calendar-day" },
+    { k:"weeklySummary", l:"Veckosammanfattning", desc:"Varje måndag 08:05 — sammanfattning av föregående vecka, per säljare och bästa dag", icon:"calendar-week" },
     { k:"largePurchase", l:"Stort köp genomfört", desc:`Köp över tröskelvärdet nedan (just nu ${Number(cfg.largePurchaseThreshold||0).toLocaleString("sv-SE")} kr)`, icon:"tag" },
     { k:"inactiveSeller", l:"Säljare inaktiv", desc:`Ingen aktivitet på ett konto på ${cfg.inactivityDays||7}+ dagar — kontrolleras varje morgon 09:00`, icon:"user-clock" },
     { k:"failedLogin", l:"Misslyckad inloggning", desc:"3+ misslyckade inloggningsförsök på samma konto inom 15 minuter", icon:"triangle-exclamation" },
