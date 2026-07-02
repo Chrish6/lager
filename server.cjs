@@ -1093,6 +1093,84 @@ setInterval(async () => {
   }
 }, 60 * 1000);
 
+// ── Daglig sammanfattning — igår kl 08:00 ("Igår sålde ni X för Y kr") ──
+let lastDailySummaryKey = "";
+setInterval(async () => {
+  const now = new Date();
+  if (now.getHours() === 8 && now.getMinutes() === 0) {
+    const key = now.toISOString().slice(0,10);
+    if (key !== lastDailySummaryKey) {
+      lastDailySummaryKey = key;
+      try {
+        const cfg = await getEmailConfig();
+        if (cfg?.notifTypes?.dailySummary === false) return;
+        const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1).getTime();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const salesRow = await dbGet("ow:sales");
+        const sales = salesRow ? JSON.parse(salesRow.value) : [];
+        const yesterday = sales.filter(s => s.soldAt >= yesterdayStart && s.soldAt < todayStart);
+        if (!yesterday.length) return; // ingen försäljning — inget mejl, för att inte spamma i onödan
+        const rev = yesterday.reduce((a,s)=>a+s.total,0);
+        const profit = yesterday.reduce((a,s)=>a+(s.profit||0),0);
+        const dateStr = new Date(yesterdayStart).toLocaleDateString("sv-SE",{weekday:"long",day:"numeric",month:"long"});
+        await sendNotification("dailySummary", `Igår sålde ni ${rev.toLocaleString("sv-SE")} kr`,
+          `<p>Sammanfattning för <strong>${dateStr}</strong>:</p>
+           <ul>
+             <li>Intäkt: <strong>${rev.toLocaleString("sv-SE")} kr</strong></li>
+             <li>Vinst: <strong style="color:${profit>=0?'#16a34a':'#CC1B2B'}">${profit.toLocaleString("sv-SE")} kr</strong></li>
+             <li>Antal affärer: ${yesterday.length}</li>
+           </ul>`);
+      } catch (e) {
+        console.error("[notify] Daglig sammanfattning misslyckades:", e.message);
+      }
+    }
+  }
+}, 60 * 1000);
+
+// ── Veckosammanfattning — måndagar kl 08:00, för föregående vecka ──
+let lastWeeklySummaryKey = "";
+setInterval(async () => {
+  const now = new Date();
+  if (now.getDay() === 1 && now.getHours() === 8 && now.getMinutes() === 5) { // 08:05, efter dagssammanfattningen
+    const key = now.toISOString().slice(0,10);
+    if (key !== lastWeeklySummaryKey) {
+      lastWeeklySummaryKey = key;
+      try {
+        const cfg = await getEmailConfig();
+        if (cfg?.notifTypes?.weeklySummary === false) return;
+        const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(); // idag 00:00
+        const weekStart = weekEnd - 7*864e5;
+        const salesRow = await dbGet("ow:sales");
+        const sales = salesRow ? JSON.parse(salesRow.value) : [];
+        const week = sales.filter(s => s.soldAt >= weekStart && s.soldAt < weekEnd);
+        if (!week.length) return;
+        const rev = week.reduce((a,s)=>a+s.total,0);
+        const profit = week.reduce((a,s)=>a+(s.profit||0),0);
+        // Bästsäljande dag
+        const byDay = {};
+        week.forEach(s => { const d = new Date(s.soldAt).toLocaleDateString("sv-SE",{weekday:"long"}); byDay[d]=(byDay[d]||0)+s.total; });
+        const bestDay = Object.entries(byDay).sort((a,b)=>b[1]-a[1])[0];
+        // Per säljare
+        const bySeller = {};
+        week.forEach(s => { bySeller[s.soldBy]=(bySeller[s.soldBy]||0)+s.total; });
+        const sellerRows = Object.entries(bySeller).sort((a,b)=>b[1]-a[1])
+          .map(([name,v])=>`<li>${name}: ${v.toLocaleString("sv-SE")} kr</li>`).join("");
+        await sendNotification("weeklySummary", `Veckans försäljning: ${rev.toLocaleString("sv-SE")} kr`,
+          `<p>Sammanfattning för veckan som gick (${new Date(weekStart).toLocaleDateString("sv-SE")}–${new Date(weekEnd-864e5).toLocaleDateString("sv-SE")}):</p>
+           <ul>
+             <li>Intäkt: <strong>${rev.toLocaleString("sv-SE")} kr</strong></li>
+             <li>Vinst: <strong style="color:${profit>=0?'#16a34a':'#CC1B2B'}">${profit.toLocaleString("sv-SE")} kr</strong></li>
+             <li>Antal affärer: ${week.length}</li>
+             ${bestDay?`<li>Bästa dag: ${bestDay[0]} (${bestDay[1].toLocaleString("sv-SE")} kr)</li>`:""}
+           </ul>
+           ${sellerRows?`<p><strong>Per säljare:</strong></p><ul>${sellerRows}</ul>`:""}`);
+      } catch (e) {
+        console.error("[notify] Veckosammanfattning misslyckades:", e.message);
+      }
+    }
+  }
+}, 60 * 1000);
+
 // Manuell trigger för test: GET /admin/api/backup-now (registreras före catch-all nedan)
 
 // ── Starta ────────────────────────────────────────────────────────────────────
