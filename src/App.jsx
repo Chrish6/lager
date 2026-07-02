@@ -5296,10 +5296,16 @@ const G2 = ({children}) => <div style={{display:"flex",gap:10,marginBottom:12}}>
 const H = ({children}) => <div style={{flex:1,minWidth:0}}>{children}</div>;
 
 // ─── Edit Page ────────────────────────────────────────────────────────────────
-function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser, logActivity }) {
+function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser, logActivity, trash }) {
   const CATS = lists?.categories||CATEGORIES, CONDS = lists?.conditions||CONDITIONS, SIDS = lists?.sides||SIDES, LOCTYPES = lists?.locationTypes||LOCATION_TYPES;
   const nextStockNumber = () => {
-    const used = new Set(items.map(i => parseInt(i.stockNumber||"0")).filter(n=>!isNaN(n)&&n>0));
+    // Lagernummer som ligger i papperskorgen är fortfarande "upptagna" tills de
+    // rensas permanent — annars skulle en ny del kunna få samma nummer som en
+    // del som väntar på att bli återställd.
+    const used = new Set([
+      ...items.map(i => parseInt(i.stockNumber||"0")),
+      ...(trash||[]).map(t => parseInt(t.stockNumber||"0")),
+    ].filter(n=>!isNaN(n)&&n>0));
     let n = 1;
     while (used.has(n)) n++;
     return String(n);
@@ -5352,7 +5358,9 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 
   // ── Duplicate detection ────────────────────────────────────────────────────
   const otherItems = items.filter(i => i.id !== f.id);
-  const dupStockNumber = f.stockNumber?.trim() && otherItems.find(i => i.stockNumber?.trim() === f.stockNumber?.trim());
+  const dupStockNumberActive = f.stockNumber?.trim() && otherItems.find(i => i.stockNumber?.trim() === f.stockNumber?.trim());
+  const dupStockNumberTrash  = f.stockNumber?.trim() && !dupStockNumberActive && (trash||[]).find(t => t.stockNumber?.trim() === f.stockNumber?.trim());
+  const dupStockNumber = dupStockNumberActive || dupStockNumberTrash;
   const dupOem        = f.oem?.trim()         && otherItems.find(i => i.oem?.trim().toLowerCase() === f.oem?.trim().toLowerCase());
 
   const DupWarning = ({ dup, label }) => dup ? (
@@ -5398,14 +5406,28 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
     setF(p => ({ ...p, images: [...(p.images || []), ...compressed] }));
   };
   const rmImg = i => set("images",f.images.filter((_,idx)=>idx!==i));
-  // Flytta en bild i galleriet — första bilden blir alltid kortets omslagsbild
-  const moveImg = (i, dir) => {
-    const imgs = [...(f.images||[])];
-    const j = i + dir;
-    if (j < 0 || j >= imgs.length) return;
-    [imgs[i], imgs[j]] = [imgs[j], imgs[i]];
-    set("images", imgs);
+  // ── Dra-och-släpp för bildordning (fungerar med både mus och touch) ──
+  const [dragImgIdx, setDragImgIdx] = useState(null);
+  const startImgDrag = (e, i) => {
+    setDragImgIdx(i);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
   };
+  const onImgDragMove = (e) => {
+    if (dragImgIdx===null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const thumb = el?.closest("[data-imgidx]");
+    if (!thumb) return;
+    const idx = Number(thumb.getAttribute("data-imgidx"));
+    if (Number.isNaN(idx) || idx===dragImgIdx) return;
+    setF(p => {
+      const imgs = [...(p.images||[])];
+      const [moved] = imgs.splice(dragImgIdx,1);
+      imgs.splice(idx,0,moved);
+      return {...p, images:imgs};
+    });
+    setDragImgIdx(idx);
+  };
+  const endImgDrag = () => setDragImgIdx(null);
 
   const missing = [];
   if (!f.name?.trim()) missing.push("Namn");
@@ -5415,7 +5437,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 
   const save = async () => {
     if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
-    if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
+    if (dupStockNumber) { toast$(dupStockNumberTrash ? `Lagernr ${f.stockNumber} ligger i papperskorgen — kan inte återanvändas ännu` : `Lagernr ${f.stockNumber} används redan!`,"error"); return; }
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
     const id = f.id || genId("item");
@@ -5440,7 +5462,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 
   const saveAndNew = async () => {
     if (missing.length>0) { toast$(`Saknas: ${missing.join(", ")}`,"error"); return; }
-    if (dupStockNumber) { toast$(`Lagernr ${f.stockNumber} används redan!`,"error"); return; }
+    if (dupStockNumber) { toast$(dupStockNumberTrash ? `Lagernr ${f.stockNumber} ligger i papperskorgen — kan inte återanvändas ännu` : `Lagernr ${f.stockNumber} används redan!`,"error"); return; }
     const autoSku = f.oem.trim().toLowerCase().replace(/[^a-z0-9]/g,"");
     const normalizedMake = normalizeMake(f.make);
     const id = f.id || genId("item");
@@ -5523,24 +5545,26 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
             </div>
           </div>
           {dupOem&&<div style={{background:"rgba(255,107,107,.2)",borderRadius:6,padding:"6px 10px",marginTop:8,fontSize:11,fontWeight:700,color:"#FFE0E0"}}><i className="fa-solid fa-triangle-exclamation"/> Artikelnummer finns redan på: {dupOem.name} #{dupOem.stockNumber}</div>}
-          {dupStockNumber&&<div style={{background:"rgba(255,107,107,.2)",borderRadius:6,padding:"6px 10px",marginTop:8,fontSize:11,fontWeight:700,color:"#FFE0E0"}}><i className="fa-solid fa-triangle-exclamation"/> Lagernr {f.stockNumber} används redan av: {dupStockNumber.name}</div>}
+          {dupStockNumber&&<div style={{background:"rgba(255,107,107,.2)",borderRadius:6,padding:"6px 10px",marginTop:8,fontSize:11,fontWeight:700,color:"#FFE0E0"}}><i className="fa-solid fa-triangle-exclamation"/> {dupStockNumberTrash ? <>Lagernr {f.stockNumber} tillhör {dupStockNumberTrash.name}, som ligger i papperskorgen — kan inte återanvändas förrän den är permanent borttagen</> : <>Lagernr {f.stockNumber} används redan av: {dupStockNumber.name}</>}</div>}
         </div>
 
         {/* Images */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Bilder{(f.images||[]).length>1?" — pilarna ändrar ordning, första bilden blir omslag":""}</div>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Bilder{(f.images||[]).length>1?" — dra för att ändra ordning, första bilden blir omslag":""}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {(f.images||[]).map((img,i)=>(
-              <div key={i} style={{position:"relative"}}>
-                <img src={img} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?B:BD}`}}/>
-                {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center"}}><span style={{background:B,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
-                <button onClick={()=>rmImg(i)} style={{position:"absolute",top:-6,right:-6,background:R,color:WH,border:"none",borderRadius:"50%",width:20,height:20,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>×</button>
-                {(f.images||[]).length>1&&(
-                  <div style={{position:"absolute",top:-6,left:-6,display:"flex",flexDirection:"column",gap:2}}>
-                    <button onClick={()=>moveImg(i,-1)} disabled={i===0} style={{width:18,height:18,borderRadius:"50%",border:`1px solid ${BD}`,background:i===0?BG:WH,color:i===0?BD:B,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:i===0?"default":"pointer",padding:0}}><i className="fa-solid fa-chevron-up"/></button>
-                    <button onClick={()=>moveImg(i,1)} disabled={i===(f.images||[]).length-1} style={{width:18,height:18,borderRadius:"50%",border:`1px solid ${BD}`,background:i===(f.images||[]).length-1?BG:WH,color:i===(f.images||[]).length-1?BD:B,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:i===(f.images||[]).length-1?"default":"pointer",padding:0}}><i className="fa-solid fa-chevron-down"/></button>
-                  </div>
-                )}
+              <div key={i} data-imgidx={i}
+                onPointerDown={e=>startImgDrag(e,i)}
+                onPointerMove={onImgDragMove}
+                onPointerUp={endImgDrag}
+                onPointerCancel={endImgDrag}
+                style={{position:"relative",touchAction:"none",cursor:dragImgIdx===i?"grabbing":"grab",opacity:dragImgIdx===i?0.5:1,transition:"opacity .1s"}}>
+                <img src={img} alt="" draggable={false} style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?B:BD}`,pointerEvents:"none"}}/>
+                {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center",pointerEvents:"none"}}><span style={{background:B,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
+                <div style={{position:"absolute",top:2,left:2,width:16,height:16,borderRadius:4,background:"rgba(0,0,0,.35)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+                  <i className="fa-solid fa-grip-vertical" style={{fontSize:9,color:"rgba(255,255,255,.9)"}}/>
+                </div>
+                <button onPointerDown={e=>e.stopPropagation()} onClick={()=>rmImg(i)} style={{position:"absolute",top:-6,right:-6,background:R,color:WH,border:"none",borderRadius:"50%",width:20,height:20,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>×</button>
               </div>
             ))}
             <button onClick={()=>fRef.current.click()} title="Välj en eller flera bilder" style={{width:70,height:70,borderRadius:8,border:`1.5px dashed ${BD}`,background:BG,color:MU,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus"/></button>
