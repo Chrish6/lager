@@ -10,9 +10,13 @@ const PORT = process.env.PORT || 3000;
 // Förhindra att servern kraschar av oväntade fel (t.ex. mDNS-konflikter)
 process.on("uncaughtException", (err) => {
   console.error("[Ohanterat fel — servern fortsätter]:", err.message);
+  throttledNotify("serverError", "Serverfel upptäckt",
+    `<p>Ett ohanterat fel inträffade på servern:</p><p style="font-family:monospace;background:#f4f5f7;padding:10px;border-radius:6px">${err.message}</p><p>Servern fortsatte köra, men det kan vara värt att kontrollera loggen (<code>pm2 logs lager</code>).</p>`);
 });
 process.on("unhandledRejection", (err) => {
   console.error("[Ohanterad rejection — servern fortsätter]:", err?.message || err);
+  throttledNotify("serverError", "Serverfel upptäckt",
+    `<p>Ett ohanterat asynkront fel inträffade på servern:</p><p style="font-family:monospace;background:#f4f5f7;padding:10px;border-radius:6px">${err?.message || err}</p><p>Servern fortsatte köra, men det kan vara värt att kontrollera loggen (<code>pm2 logs lager</code>).</p>`);
 });
 
 // ── mDNS — registrera lager.local på nätverket ────────────────────────────────
@@ -90,6 +94,53 @@ function dbDel(key) {
     });
   });
 }
+
+// ── E-postnotiser (Gmail via app-lösenord) ────────────────────────────────────
+const nodemailer = require("nodemailer");
+
+async function getEmailConfig() {
+  const row = await dbGet("ow:emailconfig");
+  if (!row) return null;
+  try { return JSON.parse(row.value); } catch { return null; }
+}
+
+function makeTransport(cfg) {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: cfg.fromEmail, pass: cfg.appPassword },
+  });
+}
+
+// Skickar ett mejl om notistypen är aktiverad i inställningarna. Fel loggas men kraschar aldrig servern.
+async function sendNotification(type, subject, bodyHtml) {
+  try {
+    const cfg = await getEmailConfig();
+    if (!cfg || !cfg.enabled || !cfg.fromEmail || !cfg.appPassword || !cfg.adminEmail) return;
+    if (cfg.notifTypes && cfg.notifTypes[type] === false) return; // explicit avstängd
+    const transport = makeTransport(cfg);
+    await transport.sendMail({
+      from: `"Lager" <${cfg.fromEmail}>`,
+      to: cfg.adminEmail,
+      subject: `[Lager] ${subject}`,
+      html: `<div style="font-family:sans-serif;font-size:14px;color:#141820">${bodyHtml}
+        <p style="color:#94a3b8;font-size:11px;margin-top:20px">Skickat automatiskt av Lager-systemet · ${new Date().toLocaleString("sv-SE")}</p></div>`,
+    });
+    console.log(`[email] Skickade notis: ${type}`);
+  } catch (e) {
+    console.error(`[email] Kunde inte skicka notis (${type}):`, e.message);
+  }
+}
+
+// Enkel spärr så samma feltyp inte spammar admin — max 1 mejl per typ var 30:e minut
+const lastNotifSent = {};
+function throttledNotify(type, subject, bodyHtml, cooldownMinutes = 30) {
+  const now = Date.now();
+  const last = lastNotifSent[type] || 0;
+  if (now - last < cooldownMinutes * 60 * 1000) return;
+  lastNotifSent[type] = now;
+  sendNotification(type, subject, bodyHtml);
+}
+
 
 const stats = { started: Date.now(), requests: 0, errors: 0 };
 
@@ -477,6 +528,58 @@ app.post("/admin/api/event", (req, res) => {
   liveFeed.unshift({ type, description, user: user||null, ip: clientIp(req), ts: Date.now() });
   if (liveFeed.length > MAX_FEED) liveFeed.length = MAX_FEED;
   res.json({ ok: true });
+});
+
+// ── E-postnotiser: händelser som klienten inte kan avgöra själv ska mejlas ──
+// (stora köp, misslyckade inloggningar). Servern avgör tröskelvärden och skickar.
+const failedLogins = {};
+app.post("/admin/api/notify", async (req, res) => {
+  const { type, ...data } = req.body || {};
+  try {
+    if (type === "large_sale") {
+      const cfg = await getEmailConfig();
+      const threshold = cfg?.largePurchaseThreshold ?? 10000;
+      if ((data.total || 0) >= threshold) {
+        await sendNotification("largePurchase", `Stort köp genomfört — ${Number(data.total).toLocaleString("sv-SE")} kr`,
+          `<p>Ett köp på <strong>${Number(data.total).toLocaleString("sv-SE")} kr</strong> genomfördes.</p>
+           <p>Kund: ${data.buyer || "Okänd"}<br>Säljare: ${data.soldBy || "Okänd"}</p>`);
+      }
+    } else if (type === "failed_login") {
+      const ip = clientIp(req);
+      const key = (data.username || "okänd") + "|" + ip;
+      const now = Date.now();
+      failedLogins[key] = (failedLogins[key] || []).filter(t => now - t < 15 * 60 * 1000);
+      failedLogins[key].push(now);
+      if (failedLogins[key].length >= 3) {
+        await sendNotification("failedLogin", `Flera misslyckade inloggningsförsök — ${data.username || "okänd"}`,
+          `<p>Minst 3 misslyckade inloggningsförsök på användarnamnet <strong>${data.username || "okänd"}</strong> från IP ${ip} under de senaste 15 minuterna.</p>`);
+        failedLogins[key] = [];
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Testmejl så admin kan verifiera att inställningarna stämmer
+app.get("/admin/api/email-test", async (req, res) => {
+  try {
+    const cfg = await getEmailConfig();
+    if (!cfg || !cfg.fromEmail || !cfg.appPassword || !cfg.adminEmail) {
+      return res.status(400).json({ ok:false, error: "Fyll i avsändare, app-lösenord och mottagare först." });
+    }
+    const transport = makeTransport(cfg);
+    await transport.sendMail({
+      from: `"Lager" <${cfg.fromEmail}>`,
+      to: cfg.adminEmail,
+      subject: "[Lager] Testmejl",
+      html: `<div style="font-family:sans-serif;font-size:14px">Det här är ett testmejl från Lager-systemet. Om du ser det här fungerar e-postinställningarna korrekt.</div>`,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
 function guessDevice(ua) {
@@ -935,6 +1038,8 @@ async function runBackup() {
     }
   } catch (e) {
     console.error("[backup] Misslyckades:", e.message);
+    throttledNotify("backupFailed", "Backup misslyckades",
+      `<p>Den automatiska backupen misslyckades:</p><p style="font-family:monospace;background:#f4f5f7;padding:10px;border-radius:6px">${e.message}</p><p>Kontrollera att servern har diskutrymme och att backup-mappen är tillgänglig.</p>`, 60);
   }
 }
 
@@ -949,6 +1054,41 @@ setInterval(() => {
       lastBackupKey = key;
       console.log("[backup] Fredag 22:00 — kör automatisk backup...");
       runBackup();
+    }
+  }
+}, 60 * 1000);
+
+// Kontrollera varje dag kl 09:00 om någon säljare varit inaktiv en tid (standard 7 dagar)
+let lastInactivityCheckKey = "";
+setInterval(async () => {
+  const now = new Date();
+  if (now.getHours() === 9 && now.getMinutes() === 0) {
+    const key = now.toISOString().slice(0,10); // en gång per dag
+    if (key !== lastInactivityCheckKey) {
+      lastInactivityCheckKey = key;
+      try {
+        const cfg = await getEmailConfig();
+        const days = cfg?.inactivityDays ?? 7;
+        const [usersRow, activityRow] = await Promise.all([dbGet("ow:users"), dbGet("ow:activitylog")]);
+        const users = usersRow ? JSON.parse(usersRow.value) : [];
+        const activity = activityRow ? JSON.parse(activityRow.value) : [];
+        const cutoff = Date.now() - days * 864e5;
+        const inactive = [];
+        for (const u of users) {
+          if (u.role === "admin") continue; // huvudadmin behöver inte varnas om sig själv
+          const lastEvent = activity.filter(a => a.user === u.username).sort((a,b)=>b.ts-a.ts)[0];
+          if (!lastEvent || lastEvent.ts < cutoff) {
+            inactive.push({ username: u.username, lastSeen: lastEvent ? new Date(lastEvent.ts).toLocaleDateString("sv-SE") : "aldrig registrerad aktivitet" });
+          }
+        }
+        if (inactive.length) {
+          const rows = inactive.map(x => `<li><strong>${x.username}</strong> — senast aktiv: ${x.lastSeen}</li>`).join("");
+          await sendNotification("inactiveSeller", `${inactive.length} säljare inaktiva i ${days}+ dagar`,
+            `<p>Följande användare har inte haft någon registrerad aktivitet (försäljning, inloggning m.m.) på minst ${days} dagar:</p><ul>${rows}</ul>`);
+        }
+      } catch (e) {
+        console.error("[notify] Inaktivitetskontroll misslyckades:", e.message);
+      }
     }
   }
 }, 60 * 1000);
