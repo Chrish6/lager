@@ -1093,6 +1093,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
         itemName: r.item.name,
         itemSku: r.item.sku,
         itemStockNumber: r.item.stockNumber||"",
+        itemOem: r.item.oem||"",
         itemSide: r.item.side||"",
         qty: r.qty,
         unitPrice: finalPrice,
@@ -2247,11 +2248,14 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
     .map(([cat,v])=>({ cat, ...v, margin: v.rev>0 ? Math.round(v.profit/v.rev*100) : 0 }))
     .sort((a,b)=>b.profit-a.profit);
 
-  // Marginal per del — vilka delar/artiklar som ger mest respektive minst vinst
+  // Marginal per del — vilka delar/artiklar som ger mest respektive minst vinst.
+  // Grupperas på ARTIKELNUMMER (OEM), inte lagernummer — lagernumret återanvänds
+  // över tid så samma fysiska artikeltyp skulle annars räknas som olika rader.
   const byItem = {};
   filtered.forEach(s=>{
-    const key = s.itemStockNumber || s.itemSku || s.itemName;
-    if (!byItem[key]) byItem[key] = { name:s.itemName, stockNumber:s.itemStockNumber, rev:0, profit:0, qty:0 };
+    const oem = s.itemOem || s.itemSnapshot?.oem || "";
+    const key = oem || s.itemSku || s.itemName; // saknas OEM (äldre försäljningar) — fall tillbaka
+    if (!byItem[key]) byItem[key] = { name:s.itemName, oem, rev:0, profit:0, qty:0 };
     byItem[key].rev += s.total;
     byItem[key].profit += (s.profit||0);
     byItem[key].qty += s.qty;
@@ -2360,7 +2364,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
               <div key={it.name+i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${BD}40`}}>
                 <div style={{width:20,height:20,borderRadius:"50%",background:GR+"15",color:GR,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.stockNumber?`#${it.stockNumber} `:""}{it.name}</div>
+                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.oem?`${it.oem} — `:""}{it.name}</div>
                   <div style={{fontSize:10,color:MU}}>{it.qty} sålda</div>
                 </div>
                 <div style={{fontSize:13,fontWeight:700,color:GR,flexShrink:0}}>{it.profit.toLocaleString("sv-SE")} kr</div>
@@ -2377,7 +2381,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
               <div key={it.name+i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${BD}40`}}>
                 <div style={{width:20,height:20,borderRadius:"50%",background:AM+"15",color:AM,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="triangle-exclamation" style={{fontSize:9}}/></div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.stockNumber?`#${it.stockNumber} `:""}{it.name}</div>
+                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.oem?`${it.oem} — `:""}{it.name}</div>
                   <div style={{fontSize:10,color:MU}}>{it.qty} sålda · {it.rev.toLocaleString("sv-SE")} kr intäkt</div>
                 </div>
                 <div style={{fontSize:13,fontWeight:700,color:it.margin>=0?TX:R,flexShrink:0}}>{it.margin}%</div>
@@ -5523,6 +5527,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
       itemName: item.name,
       itemSku: item.sku,
       itemStockNumber: item.stockNumber||"",
+      itemOem: item.oem||"",
       itemSide: item.side||"",
       qty,
       unitPrice: priceInclVat,
