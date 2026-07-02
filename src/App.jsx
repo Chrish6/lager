@@ -433,7 +433,7 @@ html.theme-dark ::-webkit-scrollbar-thumb{background:#3A4356;border-radius:4px;}
 html.theme-dark img{opacity:.94;} /* lätt dämpning så vita produktbilder inte bländar mot mörk bakgrund */
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
-input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
+input:focus,select:focus,textarea:focus{border-color:${BX}!important;box-shadow:0 0 0 3px ${B}18!important;}
 select option{background:${WH};color:${TX};}
 ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
 @keyframes slideIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
@@ -478,13 +478,13 @@ select option{background:${WH};color:${TX};}
 `;
 
 // ─── Tiny UI ──────────────────────────────────────────────────────────────────
-function Badge({ label, color=B, small }) {
+function Badge({ label, color=BX, small }) {
   if (!label) return null;
   return <span style={{background:color+"18",color,border:`1px solid ${color}28`,borderRadius:4,padding:small?"1px 6px":"2px 8px",fontSize:small?10:11,fontWeight:600,letterSpacing:.3,whiteSpace:"nowrap",display:"inline-block"}}>{label}</span>;
 }
 
 function Btn({ children, variant="primary", small, full, disabled, onClick, style:sx={} }) {
-  const v = { primary:{background:B,color:"#fff"}, red:{background:R,color:"#fff"}, success:{background:GR,color:"#fff"}, ghost:{background:WH,color:TM,border:`1px solid ${BD}`}, blue:{background:B+"12",color:B,border:`1px solid ${B}25`} };
+  const v = { primary:{background:BX,color:"#fff"}, red:{background:R,color:"#fff"}, success:{background:GR,color:"#fff"}, ghost:{background:WH,color:TM,border:`1px solid ${BD}`}, blue:{background:B+"12",color:BX,border:`1px solid ${B}25`} };
   return <button disabled={disabled} onClick={onClick} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,padding:small?"5px 11px":"9px 16px",borderRadius:6,border:"none",fontWeight:600,fontSize:small?12:13,opacity:disabled?.45:1,width:full?"100%":"auto",cursor:"pointer",...v[variant],...sx}}>{children}</button>;
 }
 
@@ -512,9 +512,9 @@ function Sel({ label, value, onChange, options }) {
 // Liten tagg för aktiva filter, med ✕ för att ta bort
 function FilterTag({ label, onRemove }) {
   return (
-    <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 6px 5px 11px",borderRadius:16,background:B+"12",border:`1px solid ${B}30`,color:B,fontSize:12,fontWeight:600,maxWidth:200}}>
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 6px 5px 11px",borderRadius:16,background:B+"12",border:`1px solid ${B}30`,color:BX,fontSize:12,fontWeight:600,maxWidth:200}}>
       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
-      <button onClick={onRemove} style={{background:B+"20",border:"none",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:B,flexShrink:0,padding:0}}>
+      <button onClick={onRemove} style={{background:B+"20",border:"none",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:BX,flexShrink:0,padding:0}}>
         <i className="fa-solid fa-xmark" style={{fontSize:10}}/>
       </button>
     </span>
@@ -555,11 +555,11 @@ function TopBar({ title, onBack, right, subtitle }) {
   return (
     <div className="topbar-safe" style={{position:"sticky",top:0,zIndex:10,background:WH,borderBottom:`1px solid ${BD}`,boxShadow:SH,flexShrink:0}}><div style={{maxWidth:900,margin:"0 auto",display:"flex",alignItems:"center",minHeight:52,padding:"0 14px",gap:10}}>
       {onBack ? (
-        <button onClick={onBack} style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34,color:B,flexShrink:0,cursor:"pointer"}}>
+        <button onClick={onBack} style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34,color:BX,flexShrink:0,cursor:"pointer"}}>
           <svg viewBox="0 0 320 512" style={{width:12,height:12,fill:"currentColor"}}><path d="M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l192 192c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 246.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-192 192z"/></svg>
         </button>
       ) : (
-        <div style={{display:"flex",gap:3,flexShrink:0}}><div style={{width:5,height:26,background:R,borderRadius:3}}/><div style={{width:5,height:26,background:B,borderRadius:3}}/></div>
+        <div style={{display:"flex",gap:3,flexShrink:0}}><div style={{width:5,height:26,background:R,borderRadius:3}}/><div style={{width:5,height:26,background:BX,borderRadius:3}}/></div>
       )}
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:17,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2}}>{title}</div>
@@ -634,12 +634,12 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
       {/* Logo */}
       <div style={{padding:"18px 20px 14px",borderBottom:`1px solid ${BD}`}}>
         <div style={{display:"flex",gap:4,marginBottom:8}}>
-          <div style={{width:5,height:28,background:R,borderRadius:3}}/><div style={{width:5,height:28,background:B,borderRadius:3}}/>
+          <div style={{width:5,height:28,background:R,borderRadius:3}}/><div style={{width:5,height:28,background:BX,borderRadius:3}}/>
           <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:18,color:TX,marginLeft:8,alignSelf:"center"}}>Lager</span>
         </div>
         {currentUser && (
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:28,height:28,borderRadius:7,background:isAdmin?R:B,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:12,flexShrink:0}}>
+            <div style={{width:28,height:28,borderRadius:7,background:isAdmin?R:BX,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:12,flexShrink:0}}>
               {currentUser.username[0].toUpperCase()}
             </div>
             <div style={{minWidth:0}}>
@@ -656,11 +656,11 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
           const isActive = active === item.route;
           return (
             <button key={item.route} onClick={()=>push(item.route)}
-              style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,border:"none",background:isActive?B+"10":"transparent",color:isActive?B:TM,fontWeight:isActive?700:500,fontSize:13,cursor:"pointer",marginBottom:2,textAlign:"left",position:"relative"}}>
-              <Icon name={item.icon} style={{fontSize:15,color:isActive?B:MU,flexShrink:0}}/>
+              style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,border:"none",background:isActive?B+"10":"transparent",color:isActive?BX:TM,fontWeight:isActive?700:500,fontSize:13,cursor:"pointer",marginBottom:2,textAlign:"left",position:"relative"}}>
+              <Icon name={item.icon} style={{fontSize:15,color:isActive?BX:MU,flexShrink:0}}/>
               <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.label}</span>
               {item.badge>0 && <span style={{background:R,color:WH,borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:800}}>{item.badge}</span>}
-              {isActive && <div style={{position:"absolute",left:0,top:4,bottom:4,width:3,background:B,borderRadius:2}}/>}
+              {isActive && <div style={{position:"absolute",left:0,top:4,bottom:4,width:3,background:BX,borderRadius:2}}/>}
             </button>
           );
         })}
@@ -680,7 +680,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
               style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",borderRadius:5,cursor:"pointer",marginBottom:2,background:WH,border:`1px solid ${BD}`}}
               title="Klicka för att kopiera">
               <i className="fa-solid fa-copy" style={{fontSize:9,color:MU,flexShrink:0}}/>
-              <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,color:B,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,color:BX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                 {ip}:{netInfo.port}
               </span>
             </div>
@@ -979,7 +979,7 @@ function AppInner() {
   if (!loaded) return (
     <div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <style>{CSS}</style>
-      <div style={{width:32,height:32,border:`3px solid ${BD}`,borderTopColor:B,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+      <div style={{width:32,height:32,border:`3px solid ${BD}`,borderTopColor:BX,borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -1003,7 +1003,7 @@ function AppInner() {
       <style>{CSS}</style>
 
       {toast && (
-        <div className="fade" style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:toast.type==="error"?R:toast.type==="success"?GR:B,color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:999,fontSize:13,fontWeight:500,boxShadow:SH2,whiteSpace:"nowrap",pointerEvents:"none"}}>
+        <div className="fade" style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",background:toast.type==="error"?R:toast.type==="success"?GR:BX,color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:999,fontSize:13,fontWeight:500,boxShadow:SH2,whiteSpace:"nowrap",pointerEvents:"none"}}>
           {toast.msg}
         </div>
       )}
@@ -1018,7 +1018,7 @@ function AppInner() {
             <div style={{fontWeight:700,fontSize:13}}>Installera Lager</div>
             <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>Lägg till på hemskärmen</div>
           </div>
-          <button onClick={installApp} style={{background:WH,color:B,border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>
+          <button onClick={installApp} style={{background:WH,color:BX,border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>
             Installera
           </button>
           <button onClick={()=>setShowInstallBanner(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",fontSize:18,cursor:"pointer",padding:"4px",flexShrink:0}}>
@@ -1262,15 +1262,15 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
                 </div>
 
                 <div>
-                  <label style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",marginBottom:3,gap:2}}>
+                  <label style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,fontWeight:700,color:priceChanged?BX:MU,textTransform:"uppercase",marginBottom:3,gap:2}}>
                     <span>Pris/st</span>
                     <div style={{display:"flex",gap:2,background:BG,borderRadius:4,padding:1}}>
-                      <button onClick={()=>updateRow(r.key,"priceMode","incl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:(r.priceMode||"incl")==="incl"?WH:"transparent",color:(r.priceMode||"incl")==="incl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>ink</button>
-                      <button onClick={()=>updateRow(r.key,"priceMode","excl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:r.priceMode==="excl"?WH:"transparent",color:r.priceMode==="excl"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>exk</button>
+                      <button onClick={()=>updateRow(r.key,"priceMode","incl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:(r.priceMode||"incl")==="incl"?WH:"transparent",color:(r.priceMode||"incl")==="incl"?BX:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>ink</button>
+                      <button onClick={()=>updateRow(r.key,"priceMode","excl")} style={{padding:"1px 5px",borderRadius:3,border:"none",background:r.priceMode==="excl"?WH:"transparent",color:r.priceMode==="excl"?BX:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>exk</button>
                     </div>
                   </label>
                   <input type="number" min="0" value={r.unitPrice} onChange={e=>updateRow(r.key,"unitPrice",Math.max(0,Number(e.target.value)))}
-                    style={{width:"100%",padding:"7px 8px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:13,fontWeight:priceChanged?700:400,color:priceChanged?B:TX,background:priceChanged?B+"08":WH}}/>
+                    style={{width:"100%",padding:"7px 8px",border:`1.5px solid ${priceChanged?BX:BD}`,borderRadius:6,fontSize:13,fontWeight:priceChanged?700:400,color:priceChanged?BX:TX,background:priceChanged?B+"08":WH}}/>
                 </div>
 
                 <div>
@@ -1278,9 +1278,9 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
                     <label style={{fontSize:10,fontWeight:700,color:hasDisc?AM:MU,textTransform:"uppercase"}}>Rabatt</label>
                     <div style={{display:"flex",gap:2,background:BG,borderRadius:4,padding:1}}>
                       <button onClick={()=>{ updateRow(r.key,"discountMode","pct"); updateRow(r.key,"discountKr",0); }}
-                        style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.discountMode==="pct"?WH:"transparent",color:r.discountMode==="pct"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>%</button>
+                        style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.discountMode==="pct"?WH:"transparent",color:r.discountMode==="pct"?BX:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>%</button>
                       <button onClick={()=>{ updateRow(r.key,"discountMode","kr"); updateRow(r.key,"discountPct",0); }}
-                        style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.discountMode==="kr"?WH:"transparent",color:r.discountMode==="kr"?B:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>kr</button>
+                        style={{padding:"2px 6px",borderRadius:3,border:"none",background:r.discountMode==="kr"?WH:"transparent",color:r.discountMode==="kr"?BX:MU,fontSize:9,fontWeight:700,cursor:"pointer"}}>kr</button>
                     </div>
                   </div>
                   {r.discountMode==="pct"
@@ -1295,7 +1295,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
               {/* Row total */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8,borderTop:`1px solid ${BD}50`}}>
                 <div style={{fontSize:11,color:MU}}>{r.qty} st · {lineExcl.toLocaleString("sv-SE")} exkl + {(lineTotal-lineExcl).toLocaleString("sv-SE")} moms</div>
-                <div style={{fontWeight:800,fontSize:15,color:B}}>{lineTotal.toLocaleString("sv-SE")} kr</div>
+                <div style={{fontWeight:800,fontSize:15,color:BX}}>{lineTotal.toLocaleString("sv-SE")} kr</div>
               </div>
             </div>
           );
@@ -1310,7 +1310,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
                 </button>
               : <div>
                   <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Sök artikel att lägga till..."
-                    style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${B}`,borderRadius:8,fontSize:13,marginBottom:6}}/>
+                    style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${BX}`,borderRadius:8,fontSize:13,marginBottom:6}}/>
                   {searchResults.length>0 && (
                     <div style={{background:WH,borderRadius:8,border:`1px solid ${BD}`,overflow:"hidden"}}>
                       {searchResults.map(i=>(
@@ -1320,7 +1320,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
                             <div style={{fontWeight:600,fontSize:13}}>{i.name}{i.side?` — ${i.side}`:""}</div>
                             <div style={{fontSize:11,color:MU}}>{i.sku} · {i.quantity} i lager</div>
                           </div>
-                          <div style={{fontWeight:700,color:B,fontSize:13}}>{i.price.toLocaleString("sv-SE")} kr</div>
+                          <div style={{fontWeight:700,color:BX,fontSize:13}}>{i.price.toLocaleString("sv-SE")} kr</div>
                         </button>
                       ))}
                     </div>
@@ -1350,7 +1350,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
               {[["kontant","Kontant"],["swish","Swish"],["kort","Kort"]].map(([k,l])=>(
                 <button key={k} onClick={()=>setPayMethod(k)}
-                  style={{padding:"10px 6px",borderRadius:8,border:`2px solid ${payMethod===k?B:BD}`,background:payMethod===k?B+"08":WH,color:payMethod===k?B:TX,fontWeight:payMethod===k?700:500,fontSize:13,cursor:"pointer"}}>
+                  style={{padding:"10px 6px",borderRadius:8,border:`2px solid ${payMethod===k?BX:BD}`,background:payMethod===k?B+"08":WH,color:payMethod===k?BX:TX,fontWeight:payMethod===k?700:500,fontSize:13,cursor:"pointer"}}>
                   {l}
                 </button>
               ))}
@@ -1380,7 +1380,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
         <div style={{flexShrink:0,background:WH,borderTop:`1px solid ${BD}`,padding:"12px 14px",paddingBottom:"max(12px,env(safe-area-inset-bottom))",boxShadow:"0 -4px 20px rgba(0,0,0,.08)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:12,color:MU}}>{rows.reduce((a,r)=>a+r.qty,0)} delar · {rows.length} artiklar</div>
-            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:B}}>{grandTotal.toLocaleString("sv-SE")} kr</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:BX}}>{grandTotal.toLocaleString("sv-SE")} kr</div>
           </div>
           <Btn full variant="red" onClick={checkout} disabled={!canCheckout} style={{padding:"13px",fontSize:15}}>
             <Icon name="cash-register"/> Slutför kassa
@@ -1498,7 +1498,7 @@ function ScanPage({ items, push, pop, toast$ }) {
           {scanning?(
             <div style={{position:"relative",aspectRatio:"4/3",background:"#000"}}>
               <video ref={videoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"70%",height:"35%",border:`3px solid ${B}`,borderRadius:8,boxShadow:"0 0 0 9999px rgba(0,0,0,.3)"}}/>
+              <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"70%",height:"35%",border:`3px solid ${BX}`,borderRadius:8,boxShadow:"0 0 0 9999px rgba(0,0,0,.3)"}}/>
               <div style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",color:"#fff",fontSize:12,fontWeight:600}}>Rikta mot QR-kod eller streckkod</div>
             </div>
           ):(
@@ -1539,7 +1539,7 @@ function ScanPage({ items, push, pop, toast$ }) {
             </div>
             <div style={{fontWeight:700,fontSize:15}}>{lastResult.name}{lastResult.side?` — ${lastResult.side}`:""}</div>
             <div style={{fontSize:12,color:MU,marginTop:2}}>{lastResult.quantity} st i lager</div>
-            <div style={{fontSize:12,color:B,fontWeight:600,marginTop:6}}>Tryck för att öppna →</div>
+            <div style={{fontSize:12,color:BX,fontWeight:600,marginTop:6}}>Tryck för att öppna →</div>
           </div>
         )}
       </div>
@@ -1573,7 +1573,7 @@ function LocationViewPage({ items, pop, push, can, isAdmin }) {
             const locItems = getItems(loc);
             const isOpen = expanded === loc;
             return (
-              <div key={loc} style={{background:WH,borderRadius:10,border:`1.5px solid ${isOpen?B:BD}`,overflow:"hidden"}}>
+              <div key={loc} style={{background:WH,borderRadius:10,border:`1.5px solid ${isOpen?BX:BD}`,overflow:"hidden"}}>
                 <div onClick={()=>setExpanded(isOpen?null:loc)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer"}}>
                   <i className="fa-solid fa-location-dot" style={{fontSize:14,color:BX,flexShrink:0}}/>
                   <div style={{flex:1}}>
@@ -1726,12 +1726,12 @@ function QrLabelsPage({ items, pop, preSelected }) {
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {LABEL_TYPES.map(t=>(
               <button key={t.k} onClick={()=>setLabelType(t.k)}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
-                <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${labelType===t.k?B:BD}`,background:labelType===t.k?B:WH,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,border:`2px solid ${labelType===t.k?BX:BD}`,background:labelType===t.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${labelType===t.k?BX:BD}`,background:labelType===t.k?BX:WH,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   {labelType===t.k&&<div style={{width:7,height:7,borderRadius:"50%",background:WH}}/>}
                 </div>
                 <div>
-                  <div style={{fontWeight:700,fontSize:13,color:labelType===t.k?B:TX}}>{t.l}</div>
+                  <div style={{fontWeight:700,fontSize:13,color:labelType===t.k?BX:TX}}>{t.l}</div>
                   <div style={{fontSize:11,color:MU}}>{t.desc}</div>
                 </div>
               </button>
@@ -1756,8 +1756,8 @@ function QrLabelsPage({ items, pop, preSelected }) {
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {filtered.map(item=>(
             <div key={item.id} onClick={()=>toggle(item.id)}
-              style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?B:BD}`,padding:"10px 12px",cursor:"pointer",display:"flex",gap:10,alignItems:"center"}}>
-              <div style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`2px solid ${selected.has(item.id)?B:BD}`,background:selected.has(item.id)?B:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              style={{background:WH,borderRadius:10,border:`2px solid ${selected.has(item.id)?BX:BD}`,padding:"10px 12px",cursor:"pointer",display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`2px solid ${selected.has(item.id)?BX:BD}`,background:selected.has(item.id)?BX:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {selected.has(item.id)&&<Icon name="check" style={{fontSize:9,color:WH}}/>}
               </div>
               <div style={{flex:1,minWidth:0}}>
@@ -1905,7 +1905,7 @@ function ReceiptPage({ sale, receiptRows, payMethod, cashGiven, change, settings
             <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:TM,marginBottom:6}}>
               <span>Moms (25%)</span><span>{grandVat.toLocaleString("sv-SE")} kr</span>
             </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:20,fontWeight:800,color:B,marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:20,fontWeight:800,color:BX,marginBottom:8}}>
               <span>TOTALT</span><span>{grandTotal.toLocaleString("sv-SE")} kr</span>
             </div>
             <div style={{fontSize:12,color:TM,lineHeight:1.8}}>
@@ -2135,7 +2135,7 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
           <>
             {/* Mall */}
             <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:14,marginBottom:14,display:"flex",gap:12,alignItems:"center"}}>
-              <Icon name="file-export" style={{color:B,fontSize:20,flexShrink:0}}/>
+              <Icon name="file-export" style={{color:BX,fontSize:20,flexShrink:0}}/>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Ladda ner mall</div>
                 <div style={{fontSize:12,color:MU}}>CSV-fil med alla kolumner färdiga. Öppna i Excel, fyll i och spara.</div>
@@ -2146,7 +2146,7 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
             {/* Upload area */}
             <div
               onClick={() => fileRef.current?.click()}
-              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=B;}}
+              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=BX;}}
               onDragLeave={e=>{e.currentTarget.style.borderColor=BD;}}
               onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=BD;handleFile(e.dataTransfer.files[0]);}}
               style={{border:`2px dashed ${BD}`,borderRadius:12,padding:"40px 20px",textAlign:"center",cursor:"pointer",background:WH,marginBottom:14,transition:"border-color .15s"}}>
@@ -2188,8 +2188,8 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
               <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Importläge</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                 {[["add","Lägg till",`Lägger till ${parsed.length} nya artiklar`],["sync","Synka",`Uppdaterar befintliga, lägger till nya — inga dubbletter`],["replace","Ersätt allt",`Tar bort ${items.length} befintliga, lägger in ${parsed.length} nya`]].map(([k,l,desc])=>(
-                  <button key={k} onClick={()=>setMode(k)} style={{padding:"12px 10px",borderRadius:8,border:`2px solid ${mode===k?B:BD}`,background:mode===k?B+"08":WH,textAlign:"left",cursor:"pointer"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:mode===k?B:TX,marginBottom:3}}>{l}</div>
+                  <button key={k} onClick={()=>setMode(k)} style={{padding:"12px 10px",borderRadius:8,border:`2px solid ${mode===k?BX:BD}`,background:mode===k?B+"08":WH,textAlign:"left",cursor:"pointer"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:mode===k?BX:TX,marginBottom:3}}>{l}</div>
                     <div style={{fontSize:11,color:MU}}>{desc}</div>
                     {k==="replace"&&<div style={{fontSize:10,color:R,marginTop:3,fontWeight:600}}>⚠ Kan inte ångras</div>}
                   </button>
@@ -2206,7 +2206,7 @@ function ImportPage({ items, saveItems, pop, push, toast$, can, isAdmin }) {
                   <div style={{fontSize:11,color:MU}}>{item.sku} · {item.category} · {item.quantity} st</div>
                 </div>
                 <div style={{textAlign:"right",flexShrink:0,marginLeft:10}}>
-                  <div style={{fontWeight:700,color:B,fontSize:13}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontWeight:700,color:BX,fontSize:13}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
                   {item.make&&<div style={{fontSize:11,color:MU}}>{item.make}{item.model?` ${item.model}`:""}</div>}
                 </div>
               </div>
@@ -2414,7 +2414,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
         <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:10}}>
           <div style={{flex:1}}>
             <div style={{fontSize:10,color:MU,marginBottom:2}}>{curLabel}</div>
-            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:B}}>{cur.rev.toLocaleString("sv-SE")} kr</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:BX}}>{cur.rev.toLocaleString("sv-SE")} kr</div>
             <div style={{fontSize:11,color:MU}}>{cur.count} affärer</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,flexShrink:0}}>
@@ -2448,7 +2448,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
         {/* Period */}
         <div style={{display:"flex",gap:6,marginBottom:16,overflowX:"auto",paddingBottom:4}}>
           {[["today","Idag"],["week","7 dagar"],["month","30 dagar"],["year","12 mån"],["all","Totalt"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setPeriod(k)} style={{flexShrink:0,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${period===k?B:BD}`,background:period===k?B:WH,color:period===k?WH:TX,fontWeight:600,fontSize:12,cursor:"pointer"}}>
+            <button key={k} onClick={()=>setPeriod(k)} style={{flexShrink:0,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${period===k?BX:BD}`,background:period===k?BX:WH,color:period===k?WH:TX,fontWeight:600,fontSize:12,cursor:"pointer"}}>
               {l}
             </button>
           ))}
@@ -2456,7 +2456,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
 
         {/* KPI grid */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10,marginBottom:16}}>
-          <S l="Intäkt" v={totalRev.toLocaleString("sv-SE")+" kr"} c={B}/>
+          <S l="Intäkt" v={totalRev.toLocaleString("sv-SE")+" kr"} c={BX}/>
           <S l="Vinst" v={totalProfit.toLocaleString("sv-SE")+" kr"} c={totalProfit>=0?GR:R} sub={`${margin}% marginal`}/>
           <S l="Antal affärer" v={filtered.length} c={TX}/>
           <S l="Sålda delar" v={totalQty} sub={`Snitt ${avgSale.toLocaleString("sv-SE")} kr/affär`}/>
@@ -2474,7 +2474,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
           <div style={{display:"flex",alignItems:"flex-end",gap:3,height:60}}>
             {days.map(d=>(
               <div key={d.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <div style={{width:"100%",background:d.rev>0?B:BD,borderRadius:3,height:d.rev>0?`${Math.max(4,Math.round(d.rev/maxRev*52))}px`:"4px",transition:"height .3s"}}/>
+                <div style={{width:"100%",background:d.rev>0?BX:BD,borderRadius:3,height:d.rev>0?`${Math.max(4,Math.round(d.rev/maxRev*52))}px`:"4px",transition:"height .3s"}}/>
                 <div style={{fontSize:8,color:MU,textAlign:"center",writingMode:"vertical-rl",transform:"rotate(180deg)",height:22,overflow:"hidden"}}>{d.key}</div>
               </div>
             ))}
@@ -2487,10 +2487,10 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
             <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Per säljare</div>
             {sellerList.map(([name,{rev,count}],i)=>(
               <div key={name} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                <div style={{width:22,height:22,borderRadius:"50%",background:B+"15",color:B,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</div>
+                <div style={{width:22,height:22,borderRadius:"50%",background:B+"15",color:BX,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</div>
                 <span style={{flex:1,fontSize:13,fontWeight:600}}>{name}</span>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:B}}>{rev.toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontSize:13,fontWeight:700,color:BX}}>{rev.toLocaleString("sv-SE")} kr</div>
                   <div style={{fontSize:11,color:MU}}>{count} affärer</div>
                 </div>
               </div>
@@ -2564,7 +2564,7 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
                     <span>{rev.toLocaleString("sv-SE")} kr <span style={{color:MU,fontWeight:400}}>({pct}%)</span></span>
                   </div>
                   <div style={{height:6,background:BD,borderRadius:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:`${pct}%`,background:B,borderRadius:3,transition:"width .5s"}}/>
+                    <div style={{height:"100%",width:`${pct}%`,background:BX,borderRadius:3,transition:"width .5s"}}/>
                   </div>
                 </div>
               );
@@ -2587,7 +2587,7 @@ function ActivityLogPage({ activityLog, users, can, isAdmin, currentUser, pop })
 
   const types = {
     sale:    { l:"Försäljning", c:GR, icon:"tag" },
-    add:     { l:"Tillagd",      c:B,  icon:"plus" },
+    add:     { l:"Tillagd",      c:BX,  icon:"plus" },
     edit:    { l:"Redigerad",    c:AM, icon:"pen" },
     delete:  { l:"Borttagen",    c:R,  icon:"trash" },
     reserve: { l:"Reserverad",   c:AM, icon:"bookmark" },
@@ -2624,9 +2624,9 @@ function ActivityLogPage({ activityLog, users, can, isAdmin, currentUser, pop })
 
         {/* Typ-filter */}
         <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4}}>
-          <button onClick={()=>setFilter("all")} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter==="all"?B:BD}`,background:filter==="all"?B:WH,color:filter==="all"?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>Alla</button>
+          <button onClick={()=>setFilter("all")} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter==="all"?BX:BD}`,background:filter==="all"?BX:WH,color:filter==="all"?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>Alla</button>
           {Object.entries(types).map(([k,{l}])=>(
-            <button key={k} onClick={()=>setFilter(k)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter===k?B:BD}`,background:filter===k?B:WH,color:filter===k?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>{l}</button>
+            <button key={k} onClick={()=>setFilter(k)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filter===k?BX:BD}`,background:filter===k?BX:WH,color:filter===k?WH:TX,fontWeight:600,fontSize:11,cursor:"pointer"}}>{l}</button>
           ))}
         </div>
 
@@ -2727,22 +2727,22 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
           <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Hantera</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <button onClick={()=>push("suppliers")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
-              <Icon name="truck" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Leverantörer</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="truck" style={{color:BX}}/><span style={{fontSize:13,fontWeight:600}}>Leverantörer</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("managelists")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
-              <Icon name="list-check" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Hantera listor (kategorier, skick m.m.)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="list-check" style={{color:BX}}/><span style={{fontSize:13,fontWeight:600}}>Hantera listor (kategorier, skick m.m.)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("menulayout")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
-              <Icon name="bars-staggered" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Meny-layout (ordna &amp; dölj)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="bars-staggered" style={{color:BX}}/><span style={{fontSize:13,fontWeight:600}}>Meny-layout (ordna &amp; dölj)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("emailnotify")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
-              <Icon name="envelope" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>E-postnotiser</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="envelope" style={{color:BX}}/><span style={{fontSize:13,fontWeight:600}}>E-postnotiser</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("backup")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
-              <Icon name="rotate" style={{color:B}}/> <span style={{fontSize:13,fontWeight:600}}>Backup & Återställning</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="rotate" style={{color:BX}}/> <span style={{fontSize:13,fontWeight:600}}>Backup & Återställning</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("activitylog")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-              <Icon name="list" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Aktivitetslogg</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+              <Icon name="list" style={{color:BX}}/><span style={{fontSize:13,fontWeight:600}}>Aktivitetslogg</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
           </div>
         </div>
@@ -2848,7 +2848,7 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin, curr
       <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 14px 20px"}}>
         {/* Läge: ändra eller ta bort */}
         <div style={{display:"flex",gap:6,background:BG,borderRadius:10,padding:4,marginBottom:14}}>
-          <button onClick={()=>{setMode("edit");}} style={{flex:1,padding:"9px",borderRadius:7,border:"none",background:mode==="edit"?WH:"transparent",color:mode==="edit"?B:MU,fontWeight:700,fontSize:13,boxShadow:mode==="edit"?SH:"none",cursor:"pointer"}}><Icon name="pen"/> Ändra fält</button>
+          <button onClick={()=>{setMode("edit");}} style={{flex:1,padding:"9px",borderRadius:7,border:"none",background:mode==="edit"?WH:"transparent",color:mode==="edit"?BX:MU,fontWeight:700,fontSize:13,boxShadow:mode==="edit"?SH:"none",cursor:"pointer"}}><Icon name="pen"/> Ändra fält</button>
           <button onClick={()=>{setMode("delete");}} style={{flex:1,padding:"9px",borderRadius:7,border:"none",background:mode==="delete"?WH:"transparent",color:mode==="delete"?R:MU,fontWeight:700,fontSize:13,boxShadow:mode==="delete"?SH:"none",cursor:"pointer"}}><Icon name="trash"/> Ta bort</button>
         </div>
 
@@ -2857,7 +2857,7 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin, curr
             <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Vad ska ändras?</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
               {FIELDS.map(f=>(
-                <button key={f.k} onClick={()=>{setField(f.k);setValue("");setLocType("");}} style={{padding:"10px 6px",borderRadius:8,border:`2px solid ${field===f.k?B:BD}`,background:field===f.k?B+"08":WH,fontWeight:field===f.k?700:500,fontSize:12,color:field===f.k?B:TX,cursor:"pointer"}}>{f.l}</button>
+                <button key={f.k} onClick={()=>{setField(f.k);setValue("");setLocType("");}} style={{padding:"10px 6px",borderRadius:8,border:`2px solid ${field===f.k?BX:BD}`,background:field===f.k?B+"08":WH,fontWeight:field===f.k?700:500,fontSize:12,color:field===f.k?BX:TX,cursor:"pointer"}}>{f.l}</button>
               ))}
             </div>
             <div style={{marginTop:10}}>
@@ -2885,19 +2885,19 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin, curr
         )}
 
         <div style={{display:"flex",gap:6,background:BG,borderRadius:8,padding:3,marginBottom:8}}>
-          <button onClick={()=>setSearchScope("all")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="all"?WH:"transparent",color:searchScope==="all"?B:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="all"?SH:"none",cursor:"pointer"}}>Sök allt</button>
-          <button onClick={()=>setSearchScope("stock")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="stock"?WH:"transparent",color:searchScope==="stock"?B:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="stock"?SH:"none",cursor:"pointer"}}>Bara lagernummer</button>
+          <button onClick={()=>setSearchScope("all")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="all"?WH:"transparent",color:searchScope==="all"?BX:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="all"?SH:"none",cursor:"pointer"}}>Sök allt</button>
+          <button onClick={()=>setSearchScope("stock")} style={{flex:1,padding:"7px",borderRadius:6,border:"none",background:searchScope==="stock"?WH:"transparent",color:searchScope==="stock"?BX:MU,fontWeight:700,fontSize:12,boxShadow:searchScope==="stock"?SH:"none",cursor:"pointer"}}>Bara lagernummer</button>
         </div>
         <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={searchScope==="stock"?"Lagernr (t.ex. 11, 15, 23)":"Sök (namn, lagernr, artikelnr, regnr...)"} style={{flex:1,padding:"9px 12px",border:`1.5px solid ${searchScope==="stock"?B:BD}`,borderRadius:8,fontSize:13,background:searchScope==="stock"?B+"06":WH}}/>
-          <button onClick={selAll} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:B}}>Alla</button>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={searchScope==="stock"?"Lagernr (t.ex. 11, 15, 23)":"Sök (namn, lagernr, artikelnr, regnr...)"} style={{flex:1,padding:"9px 12px",border:`1.5px solid ${searchScope==="stock"?BX:BD}`,borderRadius:8,fontSize:13,background:searchScope==="stock"?B+"06":WH}}/>
+          <button onClick={selAll} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:BX}}>Alla</button>
           <button onClick={()=>setSelected(new Set())} style={{flexShrink:0,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${BD}`,background:WH,fontSize:12,fontWeight:600,cursor:"pointer",color:MU}}>Rensa</button>
         </div>
         <div style={{fontSize:11,color:MU,marginBottom:10}}>Visar {filtered.length} av {items.length} · {selected.size} valda</div>
 
         {filtered.map(item=>{
           const sel = selected.has(item.id);
-          const accent = mode==="delete"?R:B;
+          const accent = mode==="delete"?R:BX;
           return (
             <div key={item.id} onClick={()=>toggle(item.id)} style={{background:WH,borderRadius:8,border:`2px solid ${sel?accent:BD}`,padding:"10px 12px",marginBottom:6,display:"flex",gap:10,alignItems:"center",cursor:"pointer"}}>
               <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${sel?accent:BD}`,background:sel?accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -2907,7 +2907,7 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin, curr
                 <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.stockNumber?`#${item.stockNumber} `:""}{item.name}{item.side?` — ${item.side}`:""}</div>
                 <div style={{fontSize:11,color:MU}}>{mode==="edit"?(field==="location"?[item.locationType,item.location].filter(Boolean).join(" ")||"—":(item[field]||"—")):(item.oem||item.sku)} · {item.sku}</div>
               </div>
-              <div style={{fontWeight:700,color:B,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
+              <div style={{fontWeight:700,color:BX,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
             </div>
           );
         })}
@@ -3016,7 +3016,7 @@ function SuppliersPage({ suppliers, saveSuppliers, items, pop, toast$, can, isAd
         ))}
 
         {editing&&(
-          <div style={{background:WH,borderRadius:10,border:`2px solid ${B}`,padding:16,marginTop:14}}>
+          <div style={{background:WH,borderRadius:10,border:`2px solid ${BX}`,padding:16,marginTop:14}}>
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>{editing==="new"?"Ny leverantör":"Redigera leverantör"}</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <Inp label="Namn *" value={f.name} onChange={e=>U("name",e.target.value)} placeholder="Leverantör AB"/>
@@ -3159,7 +3159,7 @@ function BackupPage({ items, sales, users, settings, suppliers, roles, lists, ac
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
             {stats.map(([l,v])=>(
               <div key={l} style={{background:B+"08",borderRadius:8,padding:"10px",textAlign:"center"}}>
-                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:B}}>{v}</div>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:BX}}>{v}</div>
                 <div style={{fontSize:11,color:MU}}>{l}</div>
               </div>
             ))}
@@ -3235,7 +3235,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
   const Section = ({title,action,onAction})=>(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,marginTop:18}}>
       <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>{title}</div>
-      {action&&<button onClick={onAction} style={{background:"none",border:"none",color:B,fontSize:12,fontWeight:600,cursor:"pointer"}}>{action}</button>}
+      {action&&<button onClick={onAction} style={{background:"none",border:"none",color:BX,fontSize:12,fontWeight:600,cursor:"pointer"}}>{action}</button>}
     </div>
   );
 
@@ -3261,7 +3261,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
             {icon:"rotate",    label:"Backup",       route:"backup",     show:isAdmin},
           ].filter(a=>a.show).map(a=>(
             <button key={a.route} onClick={()=>push(a.route)} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"14px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer"}}>
-              <Icon name={a.icon} style={{fontSize:18,color:B}}/>
+              <Icon name={a.icon} style={{fontSize:18,color:BX}}/>
               <span style={{fontSize:11,fontWeight:600,color:TX,textAlign:"center"}}>{a.label}</span>
             </button>
           ))}
@@ -3270,8 +3270,8 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
         {/* Lager */}
         <Section title="Lager"/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <StatCard label="Artiklar"       value={items.length}  color={B}  icon="list"/>
-          <StatCard label="Tot. kvantitet" value={totalQty}      color={B}  icon="tag"/>
+          <StatCard label="Artiklar"       value={items.length}  color={BX}  icon="list"/>
+          <StatCard label="Tot. kvantitet" value={totalQty}      color={BX}  icon="tag"/>
           <StatCard label="Lagervärde"     value={totalVal.toLocaleString("sv-SE")+" kr"} color={GR} icon="file-export"/>
         </div>
 
@@ -3279,10 +3279,10 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
         {(isAdmin||can("canViewLog"))&&<>
           <Section title="Försäljning — 30 dagar" action="Visa logg" onAction={()=>push("saleslog")}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <StatCard label="Intäkt"    value={revMonth.toLocaleString("sv-SE")+" kr"} color={B}  icon="chart-line"/>
+            <StatCard label="Intäkt"    value={revMonth.toLocaleString("sv-SE")+" kr"} color={BX}  icon="chart-line"/>
             <StatCard label="Vinst"     value={profMonth.toLocaleString("sv-SE")+" kr"} color={profMonth>=0?GR:R} icon="tag"/>
             <StatCard label="Affärer"   value={salesMonth.length} color={TM} icon="pen"/>
-            <StatCard label="Denna vecka" value={revWeek.toLocaleString("sv-SE")+" kr"} color={B} icon="chart-line"/>
+            <StatCard label="Denna vecka" value={revWeek.toLocaleString("sv-SE")+" kr"} color={BX} icon="chart-line"/>
           </div>
 
           {/* Toppsäljare */}
@@ -3291,9 +3291,9 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
             <div style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,overflow:"hidden"}}>
               {topSellers.map(([name,rev],i)=>(
                 <div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",borderBottom:i<topSellers.length-1?`1px solid ${BD}50`:"none"}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:[B,GR,AM,MU,MU][i]+"20",color:[B,GR,AM,MU,MU][i],fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:[BX,GR,AM,MU,MU][i]+"20",color:[BX,GR,AM,MU,MU][i],fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
                   <span style={{flex:1,fontSize:13,fontWeight:600}}>{name}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:[B,GR,AM,MU,MU][i]}}>{rev.toLocaleString("sv-SE")} kr</span>
+                  <span style={{fontSize:13,fontWeight:700,color:[BX,GR,AM,MU,MU][i]}}>{rev.toLocaleString("sv-SE")} kr</span>
                 </div>
               ))}
             </div>
@@ -3305,7 +3305,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
             <div style={{background:WH,borderRadius:12,border:`1px solid ${BD}`,overflow:"hidden"}}>
               {topItems.map(([name,qty],i)=>(
                 <div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",borderBottom:i<topItems.length-1?`1px solid ${BD}50`:"none"}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:B+"15",color:B,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:B+"15",color:BX,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
                   <span style={{flex:1,fontSize:13}}>{name}</span>
                   <span style={{fontSize:12,color:MU,fontWeight:600}}>{qty} st</span>
                 </div>
@@ -3324,7 +3324,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
                     <div style={{fontSize:11,color:MU}}>{s.soldBy}{s.buyer!=="Okänd"?` → ${s.buyer}`:""} · {fmt(s.soldAt)}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:12}}>
-                    <div style={{fontWeight:700,color:B,fontSize:14}}>{s.total.toLocaleString("sv-SE")} kr</div>
+                    <div style={{fontWeight:700,color:BX,fontSize:14}}>{s.total.toLocaleString("sv-SE")} kr</div>
                     <div style={{fontSize:11,color:s.profit>=0?GR:R}}>{s.profit>=0?"+":""}{(s.profit||0).toLocaleString("sv-SE")} kr</div>
                   </div>
                 </div>
@@ -3347,7 +3347,7 @@ function DashboardPage({ items, sales, users, can, isAdmin, currentUser, push, p
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 const sc = q => q===0?R:GR;
-const cc = c => c==="Ny"?GR:c?.includes("Gott")?B:c?.includes("spricka")?AM:MU;
+const cc = c => c==="Ny"?GR:c?.includes("Gott")?BX:c?.includes("spricka")?AM:MU;
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 function LoginPage({ users, saveUsers, setSession, push, pop, toast$, logActivity }) {
@@ -3392,7 +3392,7 @@ function LoginPage({ users, saveUsers, setSession, push, pop, toast$, logActivit
       <div style={{maxWidth:360,margin:"40px auto",padding:"0 20px"}}>
         <div style={{background:WH,borderRadius:12,padding:28,boxShadow:SH2,border:`1px solid ${BD}`}}>
           <div style={{display:"flex",gap:4,justifyContent:"center",marginBottom:22}}>
-            <div style={{width:8,height:40,background:R,borderRadius:4}}/><div style={{width:8,height:40,background:B,borderRadius:4}}/>
+            <div style={{width:8,height:40,background:R,borderRadius:4}}/><div style={{width:8,height:40,background:BX,borderRadius:4}}/>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <Inp label="Användarnamn" value={u} onChange={e=>setU(e.target.value)} placeholder="username" />
@@ -3517,7 +3517,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           <Icon name="rotate-right"/>
         </button>
         {(can("canUseCheckout")||isAdmin) && (
-          <button onClick={()=>push("checkout")} style={{position:"relative",background:"none",border:"none",color:B,fontSize:20,display:"flex",alignItems:"center",padding:"2px 6px"}}>
+          <button onClick={()=>push("checkout")} style={{position:"relative",background:"none",border:"none",color:BX,fontSize:20,display:"flex",alignItems:"center",padding:"2px 6px"}}>
             <Icon name="cart-shopping"/>
             {cartCount>0 && <span style={{position:"absolute",top:-5,right:-2,background:R,color:WH,borderRadius:"50%",width:17,height:17,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>}
           </button>
@@ -3541,7 +3541,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             <div style={{width:36,height:4,background:BD,borderRadius:2,margin:"0 auto 16px"}}/>
             {/* User info */}
             <div style={{display:"flex",alignItems:"center",gap:12,padding:"0 20px 16px",borderBottom:`1px solid ${BD}`,marginBottom:8}}>
-              <div style={{width:40,height:40,borderRadius:10,background:isAdmin?R:B,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:16}}>
+              <div style={{width:40,height:40,borderRadius:10,background:isAdmin?R:BX,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:16}}>
                 {currentUser.username[0].toUpperCase()}
               </div>
               <div>
@@ -3580,7 +3580,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               <button key={m.route} onClick={()=>{setMenuOpen(false); if(m.route!=="inventory") push(m.route);}}
                 style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderRadius:0}}>
                 <div style={{width:36,height:36,borderRadius:9,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <Icon name={m.icon} style={{fontSize:15,color:B}}/>
+                  <Icon name={m.icon} style={{fontSize:15,color:BX}}/>
                 </div>
                 <span style={{fontSize:14,fontWeight:500,color:TX}}>{m.label}</span>
               </button>
@@ -3589,7 +3589,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
             <div style={{borderTop:`1px solid ${BD}`,margin:"8px 0 0"}}/>
             <button onClick={()=>{setMenuOpen(false);push("profile");}} style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
               <div style={{width:36,height:36,borderRadius:9,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <Icon name="user-gear" style={{fontSize:15,color:B}}/>
+                <Icon name="user-gear" style={{fontSize:15,color:BX}}/>
               </div>
               <span style={{fontSize:14,fontWeight:500,color:TX}}>Min profil</span>
             </button>
@@ -3627,19 +3627,19 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               </button>
             )}
             <button onClick={()=>push("filter",{filters,setFilters:applyFilters,items})}
-              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${activeCount>0?B:BD}`,background:activeCount>0?B:WH,color:activeCount>0?WH:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
+              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${activeCount>0?BX:BD}`,background:activeCount>0?BX:WH,color:activeCount>0?WH:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
               <Icon name="sliders"/>
               {activeCount>0&&<span style={{fontSize:11,fontWeight:700,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"1px 6px"}}>{activeCount}</span>}
             </button>
             <button onClick={()=>setShowSort(s=>!s)}
-              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${sortBy!=="stockNumber"?B:BD}`,background:sortBy!=="stockNumber"?B+"10":WH,color:sortBy!=="stockNumber"?B:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
+              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"9px 12px",borderRadius:8,border:`1.5px solid ${sortBy!=="stockNumber"?BX:BD}`,background:sortBy!=="stockNumber"?B+"10":WH,color:sortBy!=="stockNumber"?BX:TM,fontWeight:600,fontSize:13,boxShadow:SH}}>
               {sortDir==="asc"?<Icon name="arrow-up-short-wide"/>:<Icon name="arrow-down-wide-short"/>}
             </button>
             <div style={{display:"flex",gap:5}}>
-              <button onClick={()=>setViewMode("cards")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="cards"?B:BD}`,background:viewMode==="cards"?B+"10":WH,color:viewMode==="cards"?B:MU,boxShadow:SH}}>
+              <button onClick={()=>setViewMode("cards")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="cards"?BX:BD}`,background:viewMode==="cards"?B+"10":WH,color:viewMode==="cards"?BX:MU,boxShadow:SH}}>
                 <Icon name="table-cells-large"/>
               </button>
-              <button onClick={()=>setViewMode("list")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="list"?B:BD}`,background:viewMode==="list"?B+"10":WH,color:viewMode==="list"?B:MU,boxShadow:SH}}>
+              <button onClick={()=>setViewMode("list")} style={{padding:"8px 10px",borderRadius:8,border:`1.5px solid ${viewMode==="list"?BX:BD}`,background:viewMode==="list"?B+"10":WH,color:viewMode==="list"?BX:MU,boxShadow:SH}}>
                 <Icon name="list"/>
               </button>
             </div>
@@ -3685,8 +3685,8 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               const active = sortBy===k && sortDir===dir;
               return (
                 <button key={k+dir} onClick={()=>{ setSortBy(k); setSortDir(dir); setShowSort(false); }}
-                  style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:active?B:WH,border:"none",borderBottom:`1px solid ${BD}`,color:active?WH:TX,cursor:"pointer",textAlign:"left"}}>
-                  <Icon name={icon} style={{fontSize:16,flexShrink:0,color:active?WH:B}}/>
+                  style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:active?BX:WH,border:"none",borderBottom:`1px solid ${BD}`,color:active?WH:TX,cursor:"pointer",textAlign:"left"}}>
+                  <Icon name={icon} style={{fontSize:16,flexShrink:0,color:active?WH:BX}}/>
                   <div>
                     <div style={{fontWeight:700,fontSize:13}}>{l}</div>
                     <div style={{fontSize:11,color:active?"rgba(255,255,255,.7)":MU}}>{sub}</div>
@@ -3700,8 +3700,8 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
 
         <div style={{fontSize:12,color:MU,marginBottom:10,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span>Visar <strong style={{color:TX}}>{filtered.length}</strong> av {items.length} delar</span>
-          {can("canExport") && <button onClick={exportCSV} style={{background:"none",border:"none",color:B,fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}><Icon name="file-export"/> CSV</button>}
-          {(isAdmin||can("canImport")) && <button onClick={()=>push("import")} style={{background:"none",border:"none",color:B,fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4,marginLeft:can("canExport")?"0":"auto"}}><Icon name="file-export"/> Importera</button>}
+          {can("canExport") && <button onClick={exportCSV} style={{background:"none",border:"none",color:BX,fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}><Icon name="file-export"/> CSV</button>}
+          {(isAdmin||can("canImport")) && <button onClick={()=>push("import")} style={{background:"none",border:"none",color:BX,fontSize:12,cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4,marginLeft:can("canExport")?"0":"auto"}}><Icon name="file-export"/> Importera</button>}
         </div>
 
         {/* Cards — virtualiserad: bara synliga kort renderas (snabbt även med 1000+ delar) */}
@@ -3785,15 +3785,15 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                     const base=g[0];
                     return <tr key={key} onClick={()=>push("variants",{sku:base.sku})} style={{cursor:"pointer",background:B+"04",borderBottom:`1px solid ${BD}`}}>
                       <td style={{padding:"6px 10px"}}><div style={{display:"flex",gap:3}}>{g.slice(0,3).map(i=>(i.thumb||i.images?.[0])?<img key={i.id} src={i.thumb||i.images[0]} style={{width:24,height:24,borderRadius:4,objectFit:"cover"}} alt=""/>:<div key={i.id} style={{width:24,height:24,borderRadius:4,background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center"}}><i className="fa-solid fa-wrench" style={{fontSize:10,color:MU}}/></div>)}</div></td>
-                      <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{base.name}{base.side?` — ${base.side}`:""}</div><div style={{fontSize:10,color:B,fontWeight:700}}><i className="fa-solid fa-layer-group"/> {g.length} exemplar</div></td>
+                      <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{base.name}{base.side?` — ${base.side}`:""}</div><div style={{fontSize:10,color:BX,fontWeight:700}}><i className="fa-solid fa-layer-group"/> {g.length} exemplar</div></td>
                       <td style={{padding:"7px 10px",fontSize:12,color:MU}}>{base.sku}</td>
-                      <td style={{padding:"7px 10px"}}><Badge label={base.category} color={B} small/></td>
+                      <td style={{padding:"7px 10px"}}><Badge label={base.category} color={BX} small/></td>
                       <td style={{padding:"7px 10px",fontSize:11,color:MU}}>{[...new Set(g.map(i=>i.condition?.split(" - ")[0]))].join(", ")}</td>
                       <td style={{padding:"7px 10px",fontWeight:700,color:GR}}>{g.reduce((a,i)=>a+i.quantity,0)} st</td>
-                      <td style={{padding:"7px 10px",fontWeight:700,color:B,fontSize:12,whiteSpace:"nowrap"}}>
+                      <td style={{padding:"7px 10px",fontWeight:700,color:BX,fontSize:12,whiteSpace:"nowrap"}}>
                         {(() => { const p=g.map(i=>i.price).filter(Boolean); const mn=Math.min(...p),mx=Math.max(...p); return mn===mx?`${mn.toLocaleString("sv-SE")} kr`:`${mn.toLocaleString("sv-SE")}–${mx.toLocaleString("sv-SE")}`; })()}
                       </td>
-                      <td colSpan={2} style={{padding:"7px 10px",fontSize:11,color:B,fontWeight:600}}>Välj exemplar →</td>
+                      <td colSpan={2} style={{padding:"7px 10px",fontSize:11,color:BX,fontWeight:600}}>Välj exemplar →</td>
                     </tr>;
                   });
                 })()}
@@ -3863,14 +3863,14 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
 
       {/* Botten: pris + antal + exemplar-länk */}
       <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:"auto"}}>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:BX,lineHeight:1}}>
           {prices.length===0?"—":minP===maxP?`${minP.toLocaleString("sv-SE")} kr`:`${minP.toLocaleString("sv-SE")}–${maxP.toLocaleString("sv-SE")} kr`}
         </div>
         <div style={{textAlign:"right",lineHeight:1,marginLeft:"auto"}}>
           <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:totalQty===0?R:GR}}>{totalQty}</span>
           <span style={{fontSize:10,color:MU,marginLeft:2}}>st</span>
         </div>
-        <div style={{fontSize:11,color:B,fontWeight:700,display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
+        <div style={{fontSize:11,color:BX,fontWeight:700,display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
           {group.length} ex <i className="fa-solid fa-chevron-right" style={{fontSize:10}}/>
         </div>
       </div>
@@ -3895,7 +3895,7 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
     if(group.length<=1) pop();
   };
 
-  const condColor = c => c?.includes("Gott")?GR:c?.includes("Ny")?B:c?.includes("spricka")?AM:MU;
+  const condColor = c => c?.includes("Gott")?GR:c?.includes("Ny")?BX:c?.includes("spricka")?AM:MU;
 
   if (!group.length) return <Page><TopBar title="Exemplar" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}>Inga delar hittades.</div></Page>;
 
@@ -3923,10 +3923,10 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {group.map(item=>{
             const isSel = selected?.id===item.id;
-            const cc = c => c?.includes("Gott")?GR:c?.includes("Ny")?B:c?.includes("spricka")?AM:MU;
+            const cc = c => c?.includes("Gott")?GR:c?.includes("Ny")?BX:c?.includes("spricka")?AM:MU;
             return (
               <div key={item.id} onClick={()=>setSelected(isSel?null:item)}
-                style={{background:WH,borderRadius:10,border:`2px solid ${isSel?B:BD}`,boxShadow:isSel?`0 0 0 3px ${B}15`:SH,cursor:"pointer",overflow:"hidden",transition:"border-color .15s,box-shadow .15s"}}>
+                style={{background:WH,borderRadius:10,border:`2px solid ${isSel?BX:BD}`,boxShadow:isSel?`0 0 0 3px ${B}15`:SH,cursor:"pointer",overflow:"hidden",transition:"border-color .15s,box-shadow .15s"}}>
 
                 <div style={{display:"flex",gap:12,padding:14,alignItems:"center"}}>
                   {/* Small image or icon */}
@@ -3941,23 +3941,23 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
                   {/* Info */}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                      <span style={{background:isSel?B:"rgba(0,0,0,.75)",color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,letterSpacing:.5}}>#{item.stockNumber||"?"}</span>
+                      <span style={{background:isSel?BX:"rgba(0,0,0,.75)",color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,letterSpacing:.5}}>#{item.stockNumber||"?"}</span>
                       <div style={{display:"flex",alignItems:"center",gap:4}}>
                         <div style={{width:7,height:7,borderRadius:"50%",background:cc(item.condition)}}/>
                         <span style={{fontSize:11,fontWeight:600,color:cc(item.condition)}}>{item.condition?.split(" - ")[1]||item.condition}</span>
                       </div>
                     </div>
-                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1,marginBottom:3}}>{item.price.toLocaleString("sv-SE")} kr</div>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:BX,lineHeight:1,marginBottom:3}}>{item.price.toLocaleString("sv-SE")} kr</div>
                     <div style={{fontSize:11,color:MU,display:"flex",gap:10,flexWrap:"wrap"}}>
                       {item.location&&<span>Placering: <strong style={{color:TX}}>{item.location}</strong></span>}
                       <span>Antal: <strong style={{color:item.quantity===0?R:GR}}>{item.quantity} st</strong></span>
-                      {item.regNumber&&<span>Reg: <strong style={{color:B}}>{item.regNumber}</strong></span>}
+                      {item.regNumber&&<span>Reg: <strong style={{color:BX}}>{item.regNumber}</strong></span>}
                     </div>
                     {item.notes&&<div style={{fontSize:11,color:TM,marginTop:4,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{item.notes}"</div>}
                   </div>
 
                   {/* Selection indicator */}
-                  <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${isSel?B:BD}`,background:isSel?B:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${isSel?BX:BD}`,background:isSel?BX:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
                     {isSel&&<i className="fa-solid fa-check" style={{fontSize:10,color:WH}}/>}
                   </div>
                 </div>
@@ -4040,7 +4040,7 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
       {/* Botten: pris + antal + knappar */}
       <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:"auto"}} onClick={e=>e.stopPropagation()}>
         <div>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B,lineHeight:1}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:BX,lineHeight:1}}>{(item.price||0).toLocaleString("sv-SE")} kr</div>
         </div>
         <div style={{textAlign:"right",lineHeight:1,marginLeft:"auto"}}>
           <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:item.quantity===0?R:GR}}>{item.quantity}</span>
@@ -4065,7 +4065,7 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
       <td style={{padding:"7px 10px"}}><div style={{width:36,height:36,borderRadius:6,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}</div></td>
       <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>}{item.name}{item.side&&<span style={{color:MU,fontWeight:400}}> — {item.side}</span>}</div>{item.oem&&<div style={{fontSize:11,color:MU}}>Art.nr: {item.oem}</div>}</td>
       <td style={{padding:"7px 10px",fontSize:11,color:MU}}>{item.sku}</td>
-      <td style={{padding:"7px 10px"}}><Badge label={item.category} color={B} small /></td>
+      <td style={{padding:"7px 10px"}}><Badge label={item.category} color={BX} small /></td>
       <td style={{padding:"7px 10px"}}><Badge label={item.condition} color={cc(item.condition)} small /></td>
       <td style={{padding:"7px 10px"}}><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:sc(item.quantity)}}>{item.quantity}</span></td>
       <td style={{padding:"7px 10px",fontWeight:600,fontSize:13}}>{item.price.toLocaleString("sv-SE")} kr</td>
@@ -4369,7 +4369,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök regnr, kund, del…"
                 style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
             </div>
-            <button onClick={()=>setShowSort(v=>!v)} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${showSort?B:BD}`,background:showSort?B+"08":WH,color:B,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+            <button onClick={()=>setShowSort(v=>!v)} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${showSort?BX:BD}`,background:showSort?B+"08":WH,color:BX,fontWeight:600,fontSize:13,cursor:"pointer"}}>
               <Icon name="arrow-up-wide-short"/> Sortera
             </button>
           </div>
@@ -4390,9 +4390,9 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               return (
                 <button key={o.k+o.dir} onClick={()=>{setSortBy(o.k);setSortDir(o.dir);setShowSort(false);}}
                   style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?B+"08":"transparent",border:"none",borderBottom:`1px solid ${BD}40`,cursor:"pointer",textAlign:"left"}}>
-                  <i className={`fa-solid fa-${o.icon}`} style={{color:active?B:MU,fontSize:13,width:16}}/>
-                  <span style={{fontSize:13,fontWeight:active?700:500,color:active?B:TX,flex:1}}>{o.l}</span>
-                  {active&&<Icon name="check" style={{color:B,fontSize:12}}/>}
+                  <i className={`fa-solid fa-${o.icon}`} style={{color:active?BX:MU,fontSize:13,width:16}}/>
+                  <span style={{fontSize:13,fontWeight:active?700:500,color:active?BX:TX,flex:1}}>{o.l}</span>
+                  {active&&<Icon name="check" style={{color:BX,fontSize:12}}/>}
                 </button>
               );
             })}
@@ -4407,7 +4407,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
             {k:"many",l:"Flera delar"},
           ].map(qf=>(
             <button key={qf.k} onClick={()=>setQuickFilter(qf.k)}
-              style={{padding:"6px 13px",borderRadius:16,border:`1.5px solid ${quickFilter===qf.k?B:BD}`,background:quickFilter===qf.k?B:WH,color:quickFilter===qf.k?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+              style={{padding:"6px 13px",borderRadius:16,border:`1.5px solid ${quickFilter===qf.k?BX:BD}`,background:quickFilter===qf.k?BX:WH,color:quickFilter===qf.k?WH:TM,fontSize:12,fontWeight:600,cursor:"pointer"}}>
               {qf.l}
             </button>
           ))}
@@ -4438,7 +4438,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                     <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
                     {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
                     <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
+                      <div style={{fontSize:16,fontWeight:800,color:BX,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
                       <div style={{fontSize:10,color:AM,fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</div>
                     </div>
                   </div>
@@ -4461,7 +4461,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                               <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
                             </div>
                           </div>
-                          <span style={{fontWeight:800,fontSize:14,color:B,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
+                          <span style={{fontWeight:800,fontSize:14,color:BX,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
                           {canSell&&<button onClick={()=>sellFromRes(r)} title="Sälj" style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,background:R,color:WH,border:"none",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="tag"/>{!isMobile&&" Sälj"}</button>}
                           {canEditRes&&<button onClick={()=>setConfirmUnreserve({item:r.item, res:r})} title="Ta bort reservation" style={{flexShrink:0,background:"none",border:"none",color:R,cursor:"pointer",padding:"6px 8px",fontSize:14}}><Icon name="xmark"/></button>}
                         </div>
@@ -4507,7 +4507,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
           <div className="topbar-safe" style={{background:WH,borderBottom:`1px solid ${BD}`,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <button onClick={()=>{stopScan();setShowNew(false);setPicked(new Set());}} style={{background:"none",border:"none",fontSize:20,color:MU,cursor:"pointer",padding:4}}><i className="fa-solid fa-xmark"/></button>
             <div style={{fontWeight:800,fontSize:16,flex:1}}>Ny reservation</div>
-            <span style={{fontSize:13,color:picked.size?B:MU,fontWeight:700}}>{picked.size} valda</span>
+            <span style={{fontSize:13,color:picked.size?BX:MU,fontWeight:700}}>{picked.size} valda</span>
           </div>
 
           <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:14,background:BG}}>
@@ -4535,7 +4535,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                   style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
               </div>
               <input ref={scanFileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{decodePhoto(e.target.files[0]); e.target.value="";}}/>
-              <button onClick={()=>{ if(scanning) stopScan(); else startScan(); }} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${scanning?R:B}`,background:scanning?R:B,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+              <button onClick={()=>{ if(scanning) stopScan(); else startScan(); }} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"10px 14px",borderRadius:8,border:`1.5px solid ${scanning?R:BX}`,background:scanning?R:BX,color:WH,fontWeight:600,fontSize:13,cursor:"pointer"}}>
                 <Icon name={scanning?"xmark":"qrcode"}/> {scanning?"Stäng":"Skanna"}
               </button>
             </div>
@@ -4551,16 +4551,16 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
             {scanError&&(
               <div style={{background:R+"10",border:`1px solid ${R}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:R,marginBottom:10}}>
                 {scanError}
-                <button onClick={()=>scanFileRef.current?.click()} style={{display:"block",marginTop:6,background:"none",border:"none",color:B,fontWeight:700,fontSize:12,textDecoration:"underline",cursor:"pointer",padding:0}}>Ta foto istället</button>
+                <button onClick={()=>scanFileRef.current?.click()} style={{display:"block",marginTop:6,background:"none",border:"none",color:BX,fontWeight:700,fontSize:12,textDecoration:"underline",cursor:"pointer",padding:0}}>Ta foto istället</button>
               </div>
             )}
 
             {/* Sortera + Filtrera */}
             <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-              <button onClick={()=>{setPickShowSort(v=>!v);setPickShowFilter(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pickShowSort?B:BD}`,background:pickShowSort?B+"08":WH,color:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
+              <button onClick={()=>{setPickShowSort(v=>!v);setPickShowFilter(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pickShowSort?BX:BD}`,background:pickShowSort?B+"08":WH,color:BX,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
                 <Icon name="arrow-up-wide-short"/> Sortera
               </button>
-              <button onClick={()=>{setPickShowFilter(v=>!v);setPickShowSort(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pfActive?B:BD}`,background:pfActive?B:(pickShowFilter?B+"08":WH),color:pfActive?WH:B,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
+              <button onClick={()=>{setPickShowFilter(v=>!v);setPickShowSort(false);}} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${pfActive?BX:BD}`,background:pfActive?BX:(pickShowFilter?B+"08":WH),color:pfActive?WH:BX,fontWeight:600,fontSize:12,cursor:"pointer",flexShrink:0}}>
                 <Icon name="filter"/> Filter{pfActive?` (${pfActive})`:""}
               </button>
               <div style={{fontSize:11,color:MU,marginLeft:"auto"}}>{pickable.length} delar · {picked.size} valda</div>
@@ -4580,9 +4580,9 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                   return (
                     <button key={o.k+o.dir} onClick={()=>{setPickSort(o.k);setPickSortDir(o.dir);setPickShowSort(false);}}
                       style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:active?B+"08":"transparent",border:"none",borderBottom:`1px solid ${BD}40`,cursor:"pointer",textAlign:"left"}}>
-                      <i className={`fa-solid fa-${o.icon}`} style={{color:active?B:MU,fontSize:12,width:16}}/>
-                      <span style={{fontSize:13,fontWeight:active?700:500,color:active?B:TX,flex:1}}>{o.l}</span>
-                      {active&&<Icon name="check" style={{color:B,fontSize:12}}/>}
+                      <i className={`fa-solid fa-${o.icon}`} style={{color:active?BX:MU,fontSize:12,width:16}}/>
+                      <span style={{fontSize:13,fontWeight:active?700:500,color:active?BX:TX,flex:1}}>{o.l}</span>
+                      {active&&<Icon name="check" style={{color:BX,fontSize:12}}/>}
                     </button>
                   );
                 })}
@@ -4593,30 +4593,30 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
             {pickShowFilter&&(
               <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH2,marginBottom:8,padding:"12px 14px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <span style={{fontSize:12,fontWeight:700,color:B}}>Filtrera delar</span>
+                  <span style={{fontSize:12,fontWeight:700,color:BX}}>Filtrera delar</span>
                   {pfActive>0&&<button onClick={clearPF} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:12,cursor:"pointer"}}>Rensa filter</button>}
                 </div>
                 {pickCats.length>0&&(<>
                   <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"8px 0 5px"}}>Kategori</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickCats.map(c=><button key={c} onClick={()=>togglePF("cats",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.cats.includes(c)?B:BD}`,background:pf.cats.includes(c)?B:WH,color:pf.cats.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickCats.map(c=><button key={c} onClick={()=>togglePF("cats",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.cats.includes(c)?BX:BD}`,background:pf.cats.includes(c)?BX:WH,color:pf.cats.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
                 </>)}
                 {pickConds.length>0&&(<>
                   <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"10px 0 5px"}}>Skick</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickConds.map(c=><button key={c} onClick={()=>togglePF("conds",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.conds.includes(c)?B:BD}`,background:pf.conds.includes(c)?B:WH,color:pf.conds.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickConds.map(c=><button key={c} onClick={()=>togglePF("conds",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.conds.includes(c)?BX:BD}`,background:pf.conds.includes(c)?BX:WH,color:pf.conds.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
                 </>)}
                 {pickSides.length>0&&(<>
                   <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,margin:"10px 0 5px"}}>Sida</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickSides.map(c=><button key={c} onClick={()=>togglePF("sides",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.sides.includes(c)?B:BD}`,background:pf.sides.includes(c)?B:WH,color:pf.sides.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{pickSides.map(c=><button key={c} onClick={()=>togglePF("sides",c)} style={{padding:"5px 11px",borderRadius:14,border:`1.5px solid ${pf.sides.includes(c)?BX:BD}`,background:pf.sides.includes(c)?BX:WH,color:pf.sides.includes(c)?WH:TM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{c}</button>)}</div>
                 </>)}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-                  {pickMakes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Märke</div><select value={pf.make} onChange={e=>setPickFilters(p=>({...p,make:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.make?B:BD}`,borderRadius:7,fontSize:12,color:pf.make?B:MU,background:WH,fontWeight:pf.make?600:400}}><option value="">Alla märken</option>{pickMakes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
-                  {pickModels.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Modell</div><select value={pf.model} onChange={e=>setPickFilters(p=>({...p,model:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.model?B:BD}`,borderRadius:7,fontSize:12,color:pf.model?B:MU,background:WH,fontWeight:pf.model?600:400}}><option value="">Alla modeller</option>{pickModels.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
-                  {pickSuppliers.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Leverantör</div><select value={pf.supplier} onChange={e=>setPickFilters(p=>({...p,supplier:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.supplier?B:BD}`,borderRadius:7,fontSize:12,color:pf.supplier?B:MU,background:WH,fontWeight:pf.supplier?600:400}}><option value="">Alla</option>{pickSuppliers.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
-                  {pickLocTypes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Placeringstyp</div><select value={pf.locationType} onChange={e=>setPickFilters(p=>({...p,locationType:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.locationType?B:BD}`,borderRadius:7,fontSize:12,color:pf.locationType?B:MU,background:WH,fontWeight:pf.locationType?600:400}}><option value="">Alla</option>{pickLocTypes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickMakes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Märke</div><select value={pf.make} onChange={e=>setPickFilters(p=>({...p,make:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.make?BX:BD}`,borderRadius:7,fontSize:12,color:pf.make?BX:MU,background:WH,fontWeight:pf.make?600:400}}><option value="">Alla märken</option>{pickMakes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickModels.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Modell</div><select value={pf.model} onChange={e=>setPickFilters(p=>({...p,model:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.model?BX:BD}`,borderRadius:7,fontSize:12,color:pf.model?BX:MU,background:WH,fontWeight:pf.model?600:400}}><option value="">Alla modeller</option>{pickModels.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickSuppliers.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Leverantör</div><select value={pf.supplier} onChange={e=>setPickFilters(p=>({...p,supplier:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.supplier?BX:BD}`,borderRadius:7,fontSize:12,color:pf.supplier?BX:MU,background:WH,fontWeight:pf.supplier?600:400}}><option value="">Alla</option>{pickSuppliers.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
+                  {pickLocTypes.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Placeringstyp</div><select value={pf.locationType} onChange={e=>setPickFilters(p=>({...p,locationType:e.target.value}))} style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.locationType?BX:BD}`,borderRadius:7,fontSize:12,color:pf.locationType?BX:MU,background:WH,fontWeight:pf.locationType?600:400}}><option value="">Alla</option>{pickLocTypes.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
-                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris från</div><input type="number" inputMode="numeric" value={pf.priceMin} onChange={e=>setPickFilters(p=>({...p,priceMin:e.target.value}))} placeholder="0" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMin!==""?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
-                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris till</div><input type="number" inputMode="numeric" value={pf.priceMax} onChange={e=>setPickFilters(p=>({...p,priceMax:e.target.value}))} placeholder="∞" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMax!==""?B:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris från</div><input type="number" inputMode="numeric" value={pf.priceMin} onChange={e=>setPickFilters(p=>({...p,priceMin:e.target.value}))} placeholder="0" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMin!==""?BX:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
+                  <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Pris till</div><input type="number" inputMode="numeric" value={pf.priceMax} onChange={e=>setPickFilters(p=>({...p,priceMax:e.target.value}))} placeholder="∞" style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${pf.priceMax!==""?BX:BD}`,borderRadius:7,fontSize:12,boxSizing:"border-box"}}/></div>
                 </div>
               </div>
             )}
@@ -4632,7 +4632,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                     <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.stockNumber?`#${item.stockNumber} `:""}{item.name}{item.side?` — ${item.side}`:""}</div>
                     <div style={{fontSize:11,color:MU}}>{item.oem||item.sku} · {free} ledig{free!==1?"a":""}</div>
                   </div>
-                  <div style={{fontWeight:700,color:B,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontWeight:700,color:BX,fontSize:13,flexShrink:0}}>{item.price.toLocaleString("sv-SE")} kr</div>
                 </div>
               );
             })}
@@ -4819,7 +4819,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
               {icon:"copy",label:"Kopiera länk",action:()=>{ copyText(shareData.link).then(()=>toast$("Länk kopierad!","success")); setShowShare(false); }},
             ].map(({icon,label,action})=>(
               <button key={label} onClick={action} style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"13px 12px",background:"none",border:"none",borderBottom:`1px solid ${BD}`,cursor:"pointer",fontSize:14,fontWeight:500,color:TX}}>
-                <i className={`fa-${icon.startsWith("brands")?icon:`solid fa-${icon}`}`} style={{fontSize:18,color:B,width:24,textAlign:"center"}}/>
+                <i className={`fa-${icon.startsWith("brands")?icon:`solid fa-${icon}`}`} style={{fontSize:18,color:BX,width:24,textAlign:"center"}}/>
                 {label}
               </button>
             ))}
@@ -4845,7 +4845,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
               </div>
               {imgs.length>1&&(
                 <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:2}}>
-                  {imgs.map((img,i)=><img key={i} src={img} alt="" loading="lazy" onClick={()=>setIdx(i)} style={{width:52,height:52,objectFit:"cover",borderRadius:7,border:`2.5px solid ${idx===i?B:BD}`,cursor:"pointer",flexShrink:0}}/>)}
+                  {imgs.map((img,i)=><img key={i} src={img} alt="" loading="lazy" onClick={()=>setIdx(i)} style={{width:52,height:52,objectFit:"cover",borderRadius:7,border:`2.5px solid ${idx===i?BX:BD}`,cursor:"pointer",flexShrink:0}}/>)}
                 </div>
               )}
             </div>
@@ -4856,7 +4856,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
 
             {/* Lagernummer — stor */}
             {item.stockNumber&&(
-              <div style={{background:B,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{background:BX,borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:2}}>Lagernummer</div>
                   <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:40,fontWeight:800,color:WH,letterSpacing:2,lineHeight:1}}>#{item.stockNumber}</div>
@@ -4882,7 +4882,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
                   <div style={{fontFamily:"monospace",fontSize:22,fontWeight:800,color:TX,wordBreak:"break-all",lineHeight:1.1}}>{item.oem}</div>
                 </div>
                 <button onClick={()=>copyText(item.oem).then(()=>toast$("Artikelnummer kopierat","success"))}
-                  style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,padding:"7px 12px",color:B,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                  style={{background:BG,border:`1px solid ${BD}`,borderRadius:8,padding:"7px 12px",color:BX,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
                   <i className="fa-solid fa-copy"/>
                 </button>
               </div>
@@ -4902,7 +4902,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
             {/* Notering — högt upp så den syns direkt */}
             {item.notes&&(
               <div style={{background:NOTEBG,border:`1px solid ${AM}40`,borderRadius:10,padding:"10px 14px",fontSize:13,color:TM,lineHeight:1.5}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#9A6B00",textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Notering</div>
+                <div style={{fontSize:10,fontWeight:700,color:AM,textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Notering</div>
                 {item.notes}
               </div>
             )}
@@ -4935,8 +4935,8 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
 
         {/* Badges */}
         <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>
-          <Badge label={item.category} color={B} />
-          {item.side&&<Badge label={item.side} color={B} />}
+          <Badge label={item.category} color={BX} />
+          {item.side&&<Badge label={item.side} color={BX} />}
           <Badge label={item.condition} color={cc(item.condition)} />
           
         </div>
@@ -4945,7 +4945,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
         <div style={{display:"flex",gap:10,marginBottom:16}}>
           <div style={{flex:1,background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
             <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:2}}>Försäljningspris</div>
-            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:B}}>{item.price.toLocaleString("sv-SE")} kr</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:BX}}>{item.price.toLocaleString("sv-SE")} kr</div>
           </div>
           <div style={{flex:1,background:sc(item.quantity)+"10",border:`1px solid ${sc(item.quantity)}30`,borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
             <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:2}}>I lager</div>
@@ -4995,14 +4995,14 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
         {/* Ursprungsbil */}
         {(item.make||item.model||item.regNumber)&&(
           <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:700,color:B,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Ursprungsbil</div>
+            <div style={{fontSize:10,fontWeight:700,color:BX,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Ursprungsbil</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:"8px 20px",marginBottom:10}}>
               {item.make&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Märke</div><div style={{fontSize:14,fontWeight:600}}>{item.make}</div></div>}
               {item.model&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Modell</div><div style={{fontSize:14,fontWeight:600}}>{item.model}</div></div>}
               {item.yearFrom&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Årsmodell</div><div style={{fontSize:14,fontWeight:600}}>{item.yearFrom}{item.yearTo?`-${item.yearTo}`:""}</div></div>}
-              {item.regNumber&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Reg.nr</div><div style={{fontSize:15,fontWeight:800,letterSpacing:1.5,color:B}}>{item.regNumber}</div></div>}
+              {item.regNumber&&<div><div style={{fontSize:10,color:MU,fontWeight:700,textTransform:"uppercase",marginBottom:1}}>Reg.nr</div><div style={{fontSize:15,fontWeight:800,letterSpacing:1.5,color:BX}}>{item.regNumber}</div></div>}
             </div>
-            {bilInfoUrl&&<button onClick={()=>{ try{ window.open(bilInfoUrl,"_blank"); }catch{ window.location.href=bilInfoUrl; } }} style={{display:"inline-flex",alignItems:"center",gap:5,background:B,color:"#fff",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer"}}><Icon name="magnifying-glass" style={{marginRight:5}}/> Kolla bilinfo & originalpris</button>}
+            {bilInfoUrl&&<button onClick={()=>{ try{ window.open(bilInfoUrl,"_blank"); }catch{ window.location.href=bilInfoUrl; } }} style={{display:"inline-flex",alignItems:"center",gap:5,background:BX,color:"#fff",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer"}}><Icon name="magnifying-glass" style={{marginRight:5}}/> Kolla bilinfo & originalpris</button>}
           </div>
         )}
 
@@ -5032,7 +5032,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
               <Field label="Uppdaterad" value={new Date(item.updatedAt).toLocaleDateString("sv-SE")} half />
             </div>
           )}
-          <button onClick={()=>setShowMore(v=>!v)} style={{width:"100%",background:"none",border:"none",borderTop:showMore?"none":`1px solid ${BD}`,marginTop:showMore?10:12,paddingTop:10,color:B,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+          <button onClick={()=>setShowMore(v=>!v)} style={{width:"100%",background:"none",border:"none",borderTop:showMore?"none":`1px solid ${BD}`,marginTop:showMore?10:12,paddingTop:10,color:BX,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
             {showMore?"Visa mindre":"Visa fler detaljer"} <i className={`fa-solid fa-chevron-${showMore?"up":"down"}`} style={{fontSize:10}}/>
           </button>
         </div>
@@ -5151,7 +5151,7 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
   const pMin = f.priceMin !== "" ? Number(f.priceMin) : globalMin;
   const pMax = f.priceMax !== "" ? Number(f.priceMax) : globalMax;
 
-  const condColors = {"Ny":GR,"Begagnad - Gott skick":B,"Begagnad - Liten spricka":AM,"Begagnad - Kräver lackering":AM,"Reservdelar / Skrotning":R};
+  const condColors = {"Ny":GR,"Begagnad - Gott skick":BX,"Begagnad - Liten spricka":AM,"Begagnad - Kräver lackering":AM,"Reservdelar / Skrotning":R};
 
   const parseList = (str) => (str||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   const matchCount = items.filter(i => {
@@ -5175,13 +5175,13 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
   }).length;
 
   const Section = ({label,value})=>(
-    <div style={{fontSize:11,fontWeight:700,color:value?B:MU,textTransform:"uppercase",letterSpacing:1,margin:"18px 0 8px",paddingBottom:4,borderBottom:`1px solid ${value?B+"40":BD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <div style={{fontSize:11,fontWeight:700,color:value?BX:MU,textTransform:"uppercase",letterSpacing:1,margin:"18px 0 8px",paddingBottom:4,borderBottom:`1px solid ${value?B+"40":BD}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       {label}
-      {value&&<span style={{fontSize:10,fontWeight:600,color:B,background:B+"15",borderRadius:10,padding:"1px 8px",textTransform:"none",letterSpacing:0}}>{value}</span>}
+      {value&&<span style={{fontSize:10,fontWeight:600,color:BX,background:B+"15",borderRadius:10,padding:"1px 8px",textTransform:"none",letterSpacing:0}}>{value}</span>}
     </div>
   );
 
-  const Chip = ({label,active,color=B,onClick})=>(
+  const Chip = ({label,active,color=BX,onClick})=>(
     <button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?color:BD}`,background:active?color:WH,color:active?WH:TM,fontSize:12,fontWeight:600,whiteSpace:"nowrap",cursor:"pointer"}}>
       {label}
     </button>
@@ -5189,7 +5189,7 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
 
   const Dropdown = ({value, onChange, options, placeholder}) => (
     <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${value?B:BD}`,borderRadius:8,fontSize:13,color:value?B:MU,background:WH,fontWeight:value?600:400,cursor:"pointer"}}>
+      style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${value?BX:BD}`,borderRadius:8,fontSize:13,color:value?BX:MU,background:WH,fontWeight:value?600:400,cursor:"pointer"}}>
       <option value="">{placeholder}</option>
       {options.filter(Boolean).map(o=><option key={o} value={o}>{o}</option>)}
     </select>
@@ -5212,12 +5212,12 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
         {/* Lagernummer & artikelnummer — flera med komma */}
         <Section label="Lagernummer" value={f.stockNums?"aktivt":""} />
         <input value={f.stockNums||""} onChange={e=>set("stockNums",e.target.value)} placeholder="t.ex. 11, 15, 23"
-          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.stockNums?B:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.stockNums?B+"08":WH}}/>
+          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.stockNums?BX:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.stockNums?B+"08":WH}}/>
         <div style={{fontSize:11,color:MU,marginTop:4}}>Visa bara delar med dessa lagernummer (flera separeras med komma).</div>
 
         <Section label="Artikelnummer" value={f.artNums?"aktivt":""} />
         <input value={f.artNums||""} onChange={e=>set("artNums",e.target.value.toUpperCase())} placeholder="t.ex. 8K0945095, 4G8867409"
-          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.artNums?B:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.artNums?B+"08":WH,fontFamily:"monospace"}}/>
+          style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${f.artNums?BX:BD}`,borderRadius:8,fontSize:13,boxSizing:"border-box",background:f.artNums?B+"08":WH,fontFamily:"monospace"}}/>
         <div style={{fontSize:11,color:MU,marginTop:4}}>Visa bara delar med dessa artikelnummer (flera separeras med komma).</div>
 
         {/* Snabbval */}
@@ -5270,13 +5270,13 @@ function FilterPage({ items, filters, setFilters, lists, pop }) {
         <Section label="Pris (kr)" value={(f.priceMin!==""||f.priceMax!=="")?`${pMin.toLocaleString("sv-SE")} – ${pMax.toLocaleString("sv-SE")} kr`:""} />
         <div style={{padding:"0 6px"}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:MU,marginBottom:8}}>
-            <span style={{fontWeight:600,color:B}}>{pMin.toLocaleString("sv-SE")} kr</span>
-            <span style={{fontWeight:600,color:B}}>{pMax.toLocaleString("sv-SE")} kr</span>
+            <span style={{fontWeight:600,color:BX}}>{pMin.toLocaleString("sv-SE")} kr</span>
+            <span style={{fontWeight:600,color:BX}}>{pMax.toLocaleString("sv-SE")} kr</span>
           </div>
           {/* Min slider */}
           <div style={{position:"relative",height:36}}>
             <div style={{position:"absolute",top:"50%",left:0,right:0,height:4,background:BD,borderRadius:2,transform:"translateY(-50%)"}}>
-              <div style={{position:"absolute",left:`${((pMin-globalMin)/(globalMax-globalMin||1))*100}%`,right:`${100-((pMax-globalMin)/(globalMax-globalMin||1))*100}%`,height:"100%",background:B,borderRadius:2}}/>
+              <div style={{position:"absolute",left:`${((pMin-globalMin)/(globalMax-globalMin||1))*100}%`,right:`${100-((pMax-globalMin)/(globalMax-globalMin||1))*100}%`,height:"100%",background:BX,borderRadius:2}}/>
             </div>
             <input type="range" min={globalMin} max={globalMax} step={100} value={pMin}
               onChange={e=>{const v=Number(e.target.value); if(v<=pMax) set("priceMin",String(v));}}
@@ -5534,7 +5534,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
         )}
 
         {/* De 4 obligatoriska fälten — samlade högst upp för smidigast möjliga flöde */}
-        <div style={{background:B,borderRadius:10,padding:14,marginBottom:12}}>
+        <div style={{background:BX,borderRadius:10,padding:14,marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.65)",textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Obligatoriskt</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <div>
@@ -5571,7 +5571,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
                 onPointerUp={endImgDrag}
                 onPointerCancel={endImgDrag}
                 style={{position:"relative",touchAction:"none",cursor:dragImgIdx===i?"grabbing":"grab",opacity:dragImgIdx===i?0.5:1,transition:"opacity .1s"}}>
-                <img src={img} alt="" draggable={false} style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?B:BD}`,pointerEvents:"none"}}/>
+                <img src={img} alt="" draggable={false} style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?BX:BD}`,pointerEvents:"none"}}/>
                 {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center",pointerEvents:"none"}}><span style={{background:BX,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
                 <div style={{position:"absolute",top:2,left:2,width:16,height:16,borderRadius:4,background:"rgba(0,0,0,.35)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
                   <i className="fa-solid fa-grip-vertical" style={{fontSize:9,color:"rgba(255,255,255,.9)"}}/>
@@ -5820,7 +5820,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
             {item.stockNumber&&<div style={{display:"inline-flex",alignItems:"center",gap:4,background:BX,color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,marginBottom:4}}>#{item.stockNumber}</div>}
             <div style={{fontWeight:700,fontSize:15}}>{item.name}{item.side?` — ${item.side}`:""}</div>
             <div style={{fontSize:12,color:MU,marginTop:1}}></div>
-            <div style={{fontSize:13,color:MU,marginTop:2}}>I lager: <strong style={{color:sc(item.quantity)}}>{item.quantity} st</strong> &nbsp;·&nbsp; <span style={{color:B,fontWeight:600}}>Ordinarie: {item.price.toLocaleString("sv-SE")} kr/st</span></div>
+            <div style={{fontSize:13,color:MU,marginTop:2}}>I lager: <strong style={{color:sc(item.quantity)}}>{item.quantity} st</strong> &nbsp;·&nbsp; <span style={{color:BX,fontWeight:600}}>Ordinarie: {item.price.toLocaleString("sv-SE")} kr/st</span></div>
           </div>
         </div>
 
@@ -5833,9 +5833,9 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
 
           {/* Två prisrutor — inkl och exkl moms, räknar ut varandra automatiskt */}
           <div>
-            <label style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,fontWeight:700,color:priceChanged?B:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>
+            <label style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:11,fontWeight:700,color:priceChanged?BX:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>
               <span>Pris per styck (moms 25%)</span>
-              {priceChanged&&<button onClick={resetPrice} style={{background:"none",border:"none",color:B,fontSize:10,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Återställ</button>}
+              {priceChanged&&<button onClick={resetPrice} style={{background:"none",border:"none",color:BX,fontSize:10,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Återställ</button>}
             </label>
             <div style={{display:"flex",gap:10}}>
               <div style={{flex:1}}>
@@ -5844,16 +5844,16 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
                   value={draftExcl}
                   onFocus={()=>setEditing("excl")} onBlur={()=>setEditing(null)}
                   onChange={e=>onExclChange(e.target.value)}
-                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:14,fontWeight:600,color:TX,background:priceChanged?B+"06":WH}}/>
+                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?BX:BD}`,borderRadius:6,fontSize:14,fontWeight:600,color:TX,background:priceChanged?B+"06":WH}}/>
               </div>
               <div style={{display:"flex",alignItems:"flex-end",paddingBottom:9,color:MU,fontSize:16,fontWeight:700}}>→</div>
               <div style={{flex:1}}>
-                <div style={{fontSize:10,fontWeight:700,color:B,marginBottom:3}}>INKL. MOMS</div>
+                <div style={{fontSize:10,fontWeight:700,color:BX,marginBottom:3}}>INKL. MOMS</div>
                 <input type="number" min="0" inputMode="decimal"
                   value={draftIncl}
                   onFocus={()=>setEditing("incl")} onBlur={()=>setEditing(null)}
                   onChange={e=>onInclChange(e.target.value)}
-                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?B:BD}`,borderRadius:6,fontSize:14,fontWeight:700,color:B,background:priceChanged?B+"08":WH}}/>
+                  style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${priceChanged?BX:BD}`,borderRadius:6,fontSize:14,fontWeight:700,color:BX,background:priceChanged?B+"08":WH}}/>
               </div>
             </div>
             <div style={{fontSize:11,color:MU,marginTop:6}}>Skriv i valfri ruta — den andra fylls i automatiskt.</div>
@@ -5864,8 +5864,8 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
               <label style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Ytterligare rabatt</label>
               <div style={{display:"flex",gap:4,background:BG,borderRadius:6,padding:2}}>
-                <button onClick={()=>{setDiscountMode("pct");setDiscountKr(0);}} style={{padding:"3px 10px",borderRadius:5,border:"none",background:discountMode==="pct"?WH:"transparent",color:discountMode==="pct"?B:MU,fontSize:11,fontWeight:700,boxShadow:discountMode==="pct"?SH:"none"}}>%</button>
-                <button onClick={()=>{setDiscountMode("kr");setDiscountPct(0);}} style={{padding:"3px 10px",borderRadius:5,border:"none",background:discountMode==="kr"?WH:"transparent",color:discountMode==="kr"?B:MU,fontSize:11,fontWeight:700,boxShadow:discountMode==="kr"?SH:"none"}}>kr</button>
+                <button onClick={()=>{setDiscountMode("pct");setDiscountKr(0);}} style={{padding:"3px 10px",borderRadius:5,border:"none",background:discountMode==="pct"?WH:"transparent",color:discountMode==="pct"?BX:MU,fontSize:11,fontWeight:700,boxShadow:discountMode==="pct"?SH:"none"}}>%</button>
+                <button onClick={()=>{setDiscountMode("kr");setDiscountPct(0);}} style={{padding:"3px 10px",borderRadius:5,border:"none",background:discountMode==="kr"?WH:"transparent",color:discountMode==="kr"?BX:MU,fontSize:11,fontWeight:700,boxShadow:discountMode==="kr"?SH:"none"}}>kr</button>
               </div>
             </div>
             {discountMode==="pct"?(
@@ -5909,7 +5909,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
               <span style={{fontSize:13,fontWeight:700,color:TX}}>Totalt (inkl. moms)</span>
-              <span style={{fontSize:22,fontWeight:800,color:B}}>{total.toLocaleString("sv-SE")} kr</span>
+              <span style={{fontSize:22,fontWeight:800,color:BX}}>{total.toLocaleString("sv-SE")} kr</span>
             </div>
             {item.costPrice>0&&<div style={{marginTop:6,fontSize:12,color:profit>=0?GR:R,fontWeight:600}}>Vinst (exkl. moms): {profit.toLocaleString("sv-SE")} kr</div>}
           </div>
@@ -6032,7 +6032,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
         {/* Period filter */}
         <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
           {[["all","Alla"],["today","Idag"],["week","7 dagar"],["month","30 dagar"],["dagskassa","Dagskassa"]].map(([v,l])=>(
-            <button key={v} onClick={()=>setPeriod(v)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${period===v?B:BD}`,background:period===v?B:WH,color:period===v?WH:TM,fontWeight:600,fontSize:12}}>{l}</button>
+            <button key={v} onClick={()=>setPeriod(v)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${period===v?BX:BD}`,background:period===v?BX:WH,color:period===v?WH:TM,fontWeight:600,fontSize:12}}>{l}</button>
           ))}
         </div>
 
@@ -6044,7 +6044,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
 
         {/* Stats */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:12}}>
-          {[[totalRev.toLocaleString("sv-SE")+" kr","Intäkt",B],[totalProfit.toLocaleString("sv-SE")+" kr","Vinst",totalProfit>=0?GR:R],[totalQty+" st","Sålda",TM],[totalDiscount>0?"-"+totalDiscount.toLocaleString("sv-SE")+" kr":"0 kr","Rabatt",AM]].map(([val,lbl,col])=>(
+          {[[totalRev.toLocaleString("sv-SE")+" kr","Intäkt",BX],[totalProfit.toLocaleString("sv-SE")+" kr","Vinst",totalProfit>=0?GR:R],[totalQty+" st","Sålda",TM],[totalDiscount>0?"-"+totalDiscount.toLocaleString("sv-SE")+" kr":"0 kr","Rabatt",AM]].map(([val,lbl,col])=>(
             <div key={lbl} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"10px 8px",textAlign:"center"}}>
               <div style={{fontSize:13,fontWeight:800,color:col}}>{val}</div>
               <div style={{fontSize:9,color:MU,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,marginTop:2}}>{lbl}</div>
@@ -6061,7 +6061,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
               <div key={d.date} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:10}}>
                   <div style={{fontWeight:700,fontSize:14,textTransform:"capitalize"}}>{d.date}</div>
-                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:B}}>{d.rev.toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:BX}}>{d.rev.toLocaleString("sv-SE")} kr</div>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
                   <Badge label={`${d.txCount} transaktioner`} color={TM} small/>
@@ -6090,9 +6090,9 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
             <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Toppsäljare</div>
             {topSellers.map(([name,rev],i)=>(
               <div key={name} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <div style={{width:20,height:20,borderRadius:"50%",background:[B,GR,AM][i]+"20",color:[B,GR,AM][i],fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</div>
+                <div style={{width:20,height:20,borderRadius:"50%",background:[BX,GR,AM][i]+"20",color:[BX,GR,AM][i],fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</div>
                 <span style={{flex:1,fontSize:13,fontWeight:600}}>{name}</span>
-                <span style={{fontSize:13,fontWeight:700,color:B}}>{rev.toLocaleString("sv-SE")} kr</span>
+                <span style={{fontSize:13,fontWeight:700,color:BX}}>{rev.toLocaleString("sv-SE")} kr</span>
               </div>
             ))}
           </div>
@@ -6116,13 +6116,13 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:800,fontSize:16,color:B}}>{s.total.toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontWeight:800,fontSize:16,color:BX}}>{s.total.toLocaleString("sv-SE")} kr</div>
                   {s.profit!=null&&<div style={{fontSize:11,color:s.profit>=0?GR:R,fontWeight:600}}>Vinst: {s.profit.toLocaleString("sv-SE")} kr</div>}
                 </div>
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
-                <Badge label={`${s.qty} st × ${s.unitPrice.toLocaleString("sv-SE")} kr`} color={B} small/>
-                {s.manualPrice!=null&&<Badge label={`Ändrat pris (ord. ${s.originalPrice.toLocaleString("sv-SE")} kr)`} color={B} small/>}
+                <Badge label={`${s.qty} st × ${s.unitPrice.toLocaleString("sv-SE")} kr`} color={BX} small/>
+                {s.manualPrice!=null&&<Badge label={`Ändrat pris (ord. ${s.originalPrice.toLocaleString("sv-SE")} kr)`} color={BX} small/>}
                 {s.discount>0&&<Badge label={`-${s.discount}%`} color={AM} small/>}
                 <Badge label={`Kund: ${s.buyer}`} color={TM} small/>
               </div>
@@ -6191,7 +6191,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
                 ].filter(Boolean).map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:13}}>
                     <span style={{color:MU}}>{k}</span>
-                    <span style={{fontWeight:k==="Totalt"?800:600,color:k==="Totalt"?B:TX}}>{v}</span>
+                    <span style={{fontWeight:k==="Totalt"?800:600,color:k==="Totalt"?BX:TX}}>{v}</span>
                   </div>
                 ))}
               </div>
@@ -6242,15 +6242,15 @@ function UsersPage({ users, saveUsers, roles, currentUser, push, pop, toast$, ca
           return (
           <div key={u.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-              <div style={{width:38,height:38,borderRadius:8,background:u.role==="admin"?R:(role?.color||B),display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:16,flexShrink:0}}>
+              <div style={{width:38,height:38,borderRadius:8,background:u.role==="admin"?R:(role?.color||BX),display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:16,flexShrink:0}}>
                 {u.username[0].toUpperCase()}
               </div>
               <div>
-                <div style={{fontWeight:700}}>{u.username} {u.id===currentUser.id&&<Badge label="Du" color={B} small />}</div>
+                <div style={{fontWeight:700}}>{u.username} {u.id===currentUser.id&&<Badge label="Du" color={BX} small />}</div>
                 {u.role==="admin"
                   ? <Badge label="Admin" color={R} small />
                   : role
-                    ? <Badge label={role.name} color={role.color||B} small />
+                    ? <Badge label={role.name} color={role.color||BX} small />
                     : <Badge label="Egna behörigheter" color={MU} small />}
               </div>
               <div style={{marginLeft:"auto",display:"flex",gap:6}}>
@@ -6266,7 +6266,7 @@ function UsersPage({ users, saveUsers, roles, currentUser, push, pop, toast$, ca
                   const effective = { ...(role?.permissions||{}), ...(u.permissions||{}) };
                   const active = ALL_PERMISSIONS.filter(p=>effective[p.key]);
                   return active.length>0
-                    ? active.map(p=><Badge key={p.key} label={<><Icon name={p.icon.replace("fa-","")} style={{marginRight:4}}/>{p.label}</>} color={B} small />)
+                    ? active.map(p=><Badge key={p.key} label={<><Icon name={p.icon.replace("fa-","")} style={{marginRight:4}}/>{p.label}</>} color={BX} small />)
                     : <span style={{fontSize:11,color:MU}}>Inga behörigheter</span>;
                 })()}
               </div>
@@ -6366,15 +6366,15 @@ function MenuLayoutPage({ settings, saveSettings, pop, toast$, isAdmin, can }) {
             return (
               <div key={route} style={{display:"flex",alignItems:"center",gap:10,background:WH,borderRadius:9,border:`1.5px solid ${isHidden?BD:B+"30"}`,padding:"10px 12px",opacity:isHidden?0.55:1}}>
                 <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                  <button onClick={()=>move(i,-1)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?BD:B,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-up"/></button>
-                  <button onClick={()=>move(i,1)} disabled={i===order.length-1} style={{background:"none",border:"none",cursor:i===order.length-1?"default":"pointer",color:i===order.length-1?BD:B,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-down"/></button>
+                  <button onClick={()=>move(i,-1)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?BD:BX,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-up"/></button>
+                  <button onClick={()=>move(i,1)} disabled={i===order.length-1} style={{background:"none",border:"none",cursor:i===order.length-1?"default":"pointer",color:i===order.length-1?BD:BX,padding:0,fontSize:12}}><i className="fa-solid fa-chevron-down"/></button>
                 </div>
                 <div style={{width:32,height:32,borderRadius:8,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <Icon name={item.icon} style={{color:B,fontSize:14}}/>
+                  <Icon name={item.icon} style={{color:BX,fontSize:14}}/>
                 </div>
                 <span style={{flex:1,fontWeight:600,fontSize:14,color:isHidden?MU:TX}}>{item.label}{item.locked&&<span style={{fontSize:10,color:MU,marginLeft:6,fontWeight:500}}>(kan ej döljas)</span>}</span>
                 <button onClick={()=>toggleHide(route)} disabled={item.locked} title={isHidden?"Visa":"Dölj"}
-                  style={{background:"none",border:"none",cursor:item.locked?"default":"pointer",color:item.locked?BD:(isHidden?R:B),fontSize:16,padding:6}}>
+                  style={{background:"none",border:"none",cursor:item.locked?"default":"pointer",color:item.locked?BD:(isHidden?R:BX),fontSize:16,padding:6}}>
                   <i className={`fa-solid ${isHidden?"fa-eye-slash":"fa-eye"}`}/>
                 </button>
               </div>
@@ -6469,7 +6469,7 @@ function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
                 <i className={`fa-solid fa-${showPw?"eye-slash":"eye"}`}/>
               </button>
             </div>
-            <div style={{fontSize:11,color:MU}}>Skapas på <span style={{color:B,fontWeight:600}}>myaccount.google.com/security</span> → Tvåstegsverifiering måste vara på → sök "Applösenord".</div>
+            <div style={{fontSize:11,color:MU}}>Skapas på <span style={{color:BX,fontWeight:600}}>myaccount.google.com/security</span> → Tvåstegsverifiering måste vara på → sök "Applösenord".</div>
           </div>
         </div>
 
@@ -6498,7 +6498,7 @@ function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
             {NOTIF_TYPES.map(n=>(
               <div key={n.k} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${BD}40`}}>
                 <div style={{width:34,height:34,borderRadius:8,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <Icon name={n.icon} style={{color:B,fontSize:14}}/>
+                  <Icon name={n.icon} style={{color:BX,fontSize:14}}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:13}}>{n.l}</div>
@@ -6603,7 +6603,7 @@ function TrashPage({ trash, saveTrash, items, saveItems, currentUser, isAdmin, c
                     {dleft>0?`${dleft} dagar kvar innan permanent radering`:"Rensas snart permanent"}
                   </div>
                 </div>
-                <div style={{fontWeight:800,fontSize:14,color:B,flexShrink:0}}>{(entry.price||0).toLocaleString("sv-SE")} kr</div>
+                <div style={{fontWeight:800,fontSize:14,color:BX,flexShrink:0}}>{(entry.price||0).toLocaleString("sv-SE")} kr</div>
               </div>
               <div style={{display:"flex",gap:8,marginTop:10}}>
                 <Btn small full onClick={()=>restore(entry)} disabled={busy===entry.id}><Icon name="rotate-left"/> Återställ</Btn>
@@ -6697,7 +6697,7 @@ function ManageListsPage({ lists, saveLists, pop, toast$, isAdmin, can }) {
         {sections.map(sec=>(
           <div key={sec.key} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <i className={`fa-solid ${sec.icon}`} style={{color:B,fontSize:15}}/>
+              <i className={`fa-solid ${sec.icon}`} style={{color:BX,fontSize:15}}/>
               <div style={{fontWeight:800,fontSize:15,color:TX}}>{sec.title}</div>
             </div>
             <div style={{fontSize:11,color:MU,marginBottom:10}}>{sec.hint}</div>
@@ -6752,7 +6752,7 @@ function RolesPage({ roles, saveRoles, users, push, pop, toast$, isAdmin, can })
           return (
             <div key={role.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,boxShadow:SH,padding:"12px 14px"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:14,height:14,borderRadius:4,background:role.color||B,flexShrink:0}}/>
+                <div style={{width:14,height:14,borderRadius:4,background:role.color||BX,border:`1px solid ${BD}`,flexShrink:0}}/>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,fontSize:15}}>{role.name}</div>
                   <div style={{fontSize:12,color:MU}}>{count} behörigheter · {used} användare</div>
@@ -6832,18 +6832,18 @@ function EditRolePage({ role, roles, saveRoles, pop, toast$ }) {
 
         {groups.map(g=>(
           <div key={g.title} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:10}}>
-            <div style={{fontSize:12,fontWeight:800,color:B,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>{g.title}</div>
+            <div style={{fontSize:12,fontWeight:800,color:BX,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>{g.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {g.keys.map(key=>{
                 const perm = ALL_PERMISSIONS.find(p=>p.key===key);
                 if (!perm) return null;
                 const on = !!f.permissions?.[key];
                 return (
-                  <button key={key} onClick={()=>togglePerm(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:`1.5px solid ${on?B:BD}`,background:on?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
-                    <div style={{width:34,height:20,borderRadius:10,background:on?B:BD,position:"relative",flexShrink:0,transition:"background .15s"}}>
+                  <button key={key} onClick={()=>togglePerm(key)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:`1.5px solid ${on?BX:BD}`,background:on?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+                    <div style={{width:34,height:20,borderRadius:10,background:on?BX:BD,position:"relative",flexShrink:0,transition:"background .15s"}}>
                       <div style={{position:"absolute",top:2,left:on?16:2,width:16,height:16,borderRadius:"50%",background:WH,transition:"left .15s"}}/>
                     </div>
-                    <i className={`fa-solid ${perm.icon}`} style={{color:on?B:MU,width:16,textAlign:"center"}}/>
+                    <i className={`fa-solid ${perm.icon}`} style={{color:on?BX:MU,width:16,textAlign:"center"}}/>
                     <span style={{fontSize:13,fontWeight:600,color:on?TX:TM}}>{perm.label}</span>
                   </button>
                 );
@@ -6907,7 +6907,7 @@ function ProfilePage({ currentUser, users, saveUsers, pop, toast$, theme, setThe
 
         {/* Konto-info */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:44,height:44,borderRadius:10,background:currentUser.role==="admin"?R:B,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:17,flexShrink:0}}>
+          <div style={{width:44,height:44,borderRadius:10,background:currentUser.role==="admin"?R:BX,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:17,flexShrink:0}}>
             {currentUser.username[0].toUpperCase()}
           </div>
           <div style={{minWidth:0}}>
@@ -6954,15 +6954,15 @@ function ProfilePage({ currentUser, users, saveUsers, pop, toast$, theme, setThe
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {THEME_OPTIONS.map(o=>(
               <button key={o.k} onClick={()=>setTheme(o.k)}
-                style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:9,border:`2px solid ${theme===o.k?B:BD}`,background:theme===o.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
-                <div style={{width:34,height:34,borderRadius:8,background:theme===o.k?B:BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:9,border:`2px solid ${theme===o.k?BX:BD}`,background:theme===o.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:34,height:34,borderRadius:8,background:theme===o.k?BX:BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <Icon name={o.icon} style={{color:theme===o.k?WH:MU,fontSize:14}}/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:13,color:theme===o.k?B:TX}}>{o.l}</div>
+                  <div style={{fontWeight:700,fontSize:13,color:theme===o.k?BX:TX}}>{o.l}</div>
                   <div style={{fontSize:11,color:MU}}>{o.desc}</div>
                 </div>
-                {theme===o.k&&<Icon name="check" style={{color:B}}/>}
+                {theme===o.k&&<Icon name="check" style={{color:BX}}/>}
               </button>
             ))}
           </div>
@@ -7026,7 +7026,7 @@ function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
             <label style={{display:"block",fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Roll</label>
             <div style={{display:"flex",gap:8}}>
               {[{v:"user",l:"Användare"},{v:"admin",l:"Admin"}].map(({v,l})=>(
-                <button key={v} onClick={()=>set("role",v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${f.role===v?B:BD}`,background:f.role===v?B+"10":WH,color:f.role===v?B:MU,fontWeight:600,fontSize:13}}>
+                <button key={v} onClick={()=>set("role",v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${f.role===v?BX:BD}`,background:f.role===v?B+"10":WH,color:f.role===v?BX:MU,fontWeight:600,fontSize:13}}>
                   {l}
                 </button>
               ))}
@@ -7038,13 +7038,13 @@ function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
           <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
             <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:10}}>Roll (färdigt behörighetspaket)</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
-              <button onClick={()=>set("roleId",null)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${!f.roleId?B:BD}`,background:!f.roleId?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+              <button onClick={()=>set("roleId",null)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${!f.roleId?BX:BD}`,background:!f.roleId?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
                 <div style={{width:12,height:12,borderRadius:3,background:MU,flexShrink:0}}/>
                 <span style={{fontSize:13,fontWeight:600,color:!f.roleId?TX:TM}}>Ingen roll — bara egna behörigheter nedan</span>
               </button>
               {(roles||[]).map(role=>(
-                <button key={role.id} onClick={()=>set("roleId",role.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${f.roleId===role.id?B:BD}`,background:f.roleId===role.id?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
-                  <div style={{width:12,height:12,borderRadius:3,background:role.color||B,flexShrink:0}}/>
+                <button key={role.id} onClick={()=>set("roleId",role.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${f.roleId===role.id?BX:BD}`,background:f.roleId===role.id?B+"0C":WH,cursor:"pointer",textAlign:"left"}}>
+                  <div style={{width:12,height:12,borderRadius:3,background:role.color||BX,border:`1px solid ${BD}`,flexShrink:0}}/>
                   <span style={{fontSize:13,fontWeight:600,color:f.roleId===role.id?TX:TM,flex:1}}>{role.name}</span>
                   <span style={{fontSize:11,color:MU}}>{ALL_PERMISSIONS.filter(p=>role.permissions?.[p.key]).length} behörigheter</span>
                 </button>
@@ -7063,9 +7063,9 @@ function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
               return (
               <div key={key} onClick={()=>!fromRole&&togglePerm(key)}
                 style={{display:"flex",alignItems:"center",gap:12,padding:"12px 8px",borderRadius:8,cursor:fromRole?"default":"pointer",background:on?B+"08":"transparent",marginBottom:4,opacity:fromRole?0.7:1}}>
-                <div style={{width:32,height:32,borderRadius:8,background:on?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:14,color:on?B:MU}}/></div>
-                <span style={{flex:1,fontSize:14,fontWeight:500,color:on?TX:MU}}>{label}{fromRole&&<span style={{fontSize:10,color:B,marginLeft:6,fontWeight:700}}>(från roll)</span>}</span>
-                <div style={{width:42,height:24,borderRadius:12,background:on?B:"#ddd",position:"relative",transition:"background .2s",flexShrink:0}}>
+                <div style={{width:32,height:32,borderRadius:8,background:on?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:14,color:on?BX:MU}}/></div>
+                <span style={{flex:1,fontSize:14,fontWeight:500,color:on?TX:MU}}>{label}{fromRole&&<span style={{fontSize:10,color:BX,marginLeft:6,fontWeight:700}}>(från roll)</span>}</span>
+                <div style={{width:42,height:24,borderRadius:12,background:on?BX:BD,position:"relative",transition:"background .2s",flexShrink:0}}>
                   <div style={{position:"absolute",top:3,left:on?20:3,width:18,height:18,borderRadius:"50%",background:WH,boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .2s"}}/>
                 </div>
               </div>
@@ -7074,7 +7074,7 @@ function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
           </div>
         )}
         {f.role==="admin" && (
-          <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 16px",fontSize:13,color:B,fontWeight:500}}>
+          <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 16px",fontSize:13,color:BX,fontWeight:500}}>
             OK Admin har automatiskt alla behörigheter
           </div>
         )}
@@ -7097,9 +7097,9 @@ function PermsPage({ user, users, saveUsers, pop, toast$ }) {
       <div style={{padding:"14px 14px 40px"}}>
         {ALL_PERMISSIONS.map(({key,label,icon})=>(
           <div key={key} onClick={()=>toggle(key)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px",borderRadius:10,cursor:"pointer",background:p[key]?B+"08":WH,border:`1px solid ${p[key]?B+"25":BD}`,marginBottom:8,transition:"background .1s"}}>
-            <div style={{width:34,height:34,borderRadius:8,background:p[key]?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:15,color:p[key]?B:MU}}/></div>
+            <div style={{width:34,height:34,borderRadius:8,background:p[key]?B+"18":BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name={icon.replace("fa-","")} style={{fontSize:15,color:p[key]?BX:MU}}/></div>
             <span style={{flex:1,fontSize:14,fontWeight:500,color:p[key]?TX:MU}}>{label}</span>
-            <div style={{width:44,height:24,borderRadius:12,background:p[key]?B:"#ddd",position:"relative",transition:"background .2s",flexShrink:0}}>
+            <div style={{width:44,height:24,borderRadius:12,background:p[key]?BX:BD,position:"relative",transition:"background .2s",flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:p[key]?22:3,width:18,height:18,borderRadius:"50%",background:WH,boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .2s"}}/>
             </div>
           </div>
