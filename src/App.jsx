@@ -382,8 +382,8 @@ function legacyCopy(text) {
 
 
 
-const R="#CC1B2B", B="#1B3A6B", BG="#F4F5F7", WH="#FFFFFF", BD="#E2E5EA";
-const TX="#141820", TM="#3D4451", MU="#8A90A0", GR="#16A34A", AM="#D97706";
+const R="#CC1B2B", B="#1B3A6B", BG="var(--bg)", WH="var(--wh)", BD="var(--bd)";
+const TX="var(--tx)", TM="var(--tm)", MU="var(--mu)", GR="#16A34A", AM="#D97706";
 const SH="0 1px 4px rgba(0,0,0,.08)", SH2="0 4px 20px rgba(0,0,0,.12)";
 
 const CSS = `
@@ -404,25 +404,29 @@ html,body{height:100%;background:${BG};}
 .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 .pwa-mode .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 
-/* ── Mörkt tema ──────────────────────────────────────────────────────────
-   Appen är byggd med hårdkodade ljusa färger på tusentals ställen, så en
-   riktig "äkta" mörk palett skulle kräva att skriva om nästan all styling.
-   I stället används ett beprövat trick: invertera hela sidans färger med
-   ett CSS-filter, och invertera sedan tillbaka bilder/QR-video/canvas så
-   att foton och QR-koder ser normala ut. Resultatet är ett fungerande
-   mörkt läge utan att röra själva komponenterna. */
-html.theme-dark{background:#0b0e14;}
-html.theme-dark body{filter:invert(1) hue-rotate(180deg);background:#fff;}
-html.theme-dark img,
-html.theme-dark video,
-html.theme-dark canvas,
-html.theme-dark iframe,
-html.theme-dark [style*="background-image"]{filter:invert(1) hue-rotate(180deg);}
-html.theme-dark ::-webkit-scrollbar{background:#0b0e14;}
+/* ── Tema — riktiga färger via CSS-variabler ─────────────────────────────
+   De sex neutrala färgerna (bakgrund, kort, ram, text) styrs av variabler
+   nedan och byts helt ut i mörkt läge. Varumärkesfärgerna (blått/rött/
+   grönt/orange) är medvetet oförändrade i båda lägena — de används på
+   många ställen med en inbyggd genomskinlighets-teknik som kräver riktiga
+   hex-värden, och konsekventa märkesfärger är i sig ett rimligt designval. */
+:root{
+  --bg:#F4F5F7; --wh:#FFFFFF; --bd:#E2E5EA;
+  --tx:#141820; --tm:#3D4451; --mu:#8A90A0;
+}
+html.theme-dark{
+  --bg:#12161F; --wh:#1C212C; --bd:#323B4D;
+  --tx:#EDEFF3; --tm:#B7BECC; --mu:#8791A3;
+  background:var(--bg);
+  color-scheme:dark;
+}
+html.theme-dark ::-webkit-scrollbar{background:#12161F;}
+html.theme-dark ::-webkit-scrollbar-thumb{background:#3A4356;border-radius:4px;}
+html.theme-dark img{opacity:.94;} /* lätt dämpning så vita produktbilder inte bländar mot mörk bakgrund */
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
-select option{background:#fff;}
+select option{background:${WH};color:${TX};}
 ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
 @keyframes slideIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
