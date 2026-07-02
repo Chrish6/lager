@@ -4480,6 +4480,11 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                               {r.item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
                               <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
                             </div>
+                            <div style={{fontSize:10.5,color:MU,marginTop:2,display:"flex",gap:8,flexWrap:"wrap"}}>
+                              {r.item.oem&&<span style={{fontFamily:"monospace"}}>{r.item.oem}</span>}
+                              {r.item.category&&<span>{r.item.category}</span>}
+                              {(r.item.locationType||r.item.location)&&<span><i className="fa-solid fa-location-dot" style={{fontSize:9,marginRight:2}}/>{[r.item.locationType,r.item.location].filter(Boolean).join(" ")}</span>}
+                            </div>
                           </div>
                           <span style={{fontWeight:800,fontSize:14,color:BX,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{(r.item.price||0).toLocaleString("sv-SE")} kr</span>
                           {canSell&&<button onClick={()=>sellFromRes(r)} title="Sälj" style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,background:R,color:WH,border:"none",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}><Icon name="tag"/>{!isMobile&&" Sälj"}</button>}
@@ -4676,6 +4681,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const isMobile = useIsMobile();
   const [idx, setIdx] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showReserve, setShowReserve] = useState(!!openReserve);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -4854,13 +4860,14 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
           {/* Bild — begränsad maxbredd så den inte tar hela skärmen */}
           {imgs.length>0 && (
             <div style={{flex:"1 1 320px",maxWidth:420,minWidth:260}}>
-              <div style={{borderRadius:12,overflow:"hidden",background:BG,aspectRatio:"4/3",position:"relative",userSelect:"none"}}
+              <div style={{borderRadius:12,overflow:"hidden",background:BG,aspectRatio:"4/3",position:"relative",userSelect:"none",cursor:"zoom-in"}}
                 onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-                <img src={imgs[idx]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} />
-                <div style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,.45)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600}}>{idx+1}/{imgs.length}</div>
+                <img src={imgs[idx]} alt="" onClick={()=>setLightbox(true)} style={{width:"100%",height:"100%",objectFit:"cover"}} />
+                <div style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,.45)",color:"#fff",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,pointerEvents:"none"}}><i className="fa-solid fa-expand"/></div>
+                <div style={{position:"absolute",bottom:10,right:10,background:"rgba(0,0,0,.45)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600,pointerEvents:"none"}}>{idx+1}/{imgs.length}</div>
                 {imgs.length>1&&<>
-                  <button onClick={()=>setIdx(i=>Math.max(0,i-1))} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>‹</button>
-                  <button onClick={()=>setIdx(i=>Math.min(imgs.length-1,i+1))} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>›</button>
+                  <button onClick={(e)=>{e.stopPropagation();setIdx(i=>Math.max(0,i-1));}} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>‹</button>
+                  <button onClick={(e)=>{e.stopPropagation();setIdx(i=>Math.min(imgs.length-1,i+1));}} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.85)",border:"none",borderRadius:"50%",width:34,height:34,fontSize:18,cursor:"pointer"}}>›</button>
                 </>}
               </div>
               {imgs.length>1&&(
@@ -5145,6 +5152,22 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
               }}><Icon name="tag"/> Fortsätt till försäljning</Btn>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Bild i helskärm — tryck på bilden för att förstora */}
+      {lightbox&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300}}
+          onClick={()=>setLightbox(false)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <button onClick={()=>setLightbox(false)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:40,height:40,color:"#fff",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
+            <i className="fa-solid fa-xmark"/>
+          </button>
+          {imgs.length>1&&<div style={{position:"absolute",top:16,left:16,background:"rgba(255,255,255,.15)",color:"#fff",borderRadius:20,padding:"6px 14px",fontSize:13,fontWeight:600}}>{idx+1}/{imgs.length}</div>}
+          <img src={imgs[idx]} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"92vw",maxHeight:"88vh",objectFit:"contain",borderRadius:6,userSelect:"none"}}/>
+          {imgs.length>1&&<>
+            <button onClick={e=>{e.stopPropagation();setIdx(i=>Math.max(0,i-1));}} style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:44,height:44,color:"#fff",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <button onClick={e=>{e.stopPropagation();setIdx(i=>Math.min(imgs.length-1,i+1));}} style={{position:"absolute",right:16,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:44,height:44,color:"#fff",fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </>}
         </div>
       )}
     </Page>
