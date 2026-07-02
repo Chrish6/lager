@@ -274,6 +274,21 @@ app.post("/api/item/delete", async (req, res) => {
   } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
 });
 
+// Mjuk borttagning — tas bort från lagerlistan men BILDERNA BEHÅLLS på servern,
+// så att artikeln kan återställas helt (med bilder) från papperskorgen.
+// Skiljer sig från /api/item/delete ovan endast genom att inte röra images-tabellen.
+app.post("/api/item/soft-delete", async (req, res) => {
+  try {
+    stats.requests++;
+    const id = req.body.id;
+    const row = await dbGet("ow:items");
+    const items = row ? JSON.parse(row.value) : [];
+    const filtered = items.filter(i => i.id !== id);
+    await dbSet("ow:items", JSON.stringify(filtered));
+    res.json({ ok: true, items: filtered });
+  } catch (e) { stats.errors++; res.status(500).json({ error: e.message }); }
+});
+
 // ── REDIGERINGSLÅS ────────────────────────────────────────────────────────────
 // Hålls i minnet (snabbt, ingen databas-overhead). Map: itemId → {user, action, ts}
 // action: "edit" (redigerar) | "cart" (ligger i kassan)
@@ -396,7 +411,7 @@ app.post("/api/restore", async (req, res) => {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ error: "Ingen data mottogs (body tom)" });
     }
-    const { items = [], sales = null, users = null, settings = null, suppliers = [], roles = null, lists = null, activitylog = null, favorites = null, mode = "replace", first = false } = req.body;
+    const { items = [], sales = null, users = null, settings = null, suppliers = [], roles = null, lists = null, activitylog = null, favorites = null, trash = null, mode = "replace", first = false } = req.body;
 
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: "items är inte en lista" });
@@ -439,6 +454,7 @@ app.post("/api/restore", async (req, res) => {
         if (lists) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:lists',?,strftime('%s','now'))", [JSON.stringify(lists)]);
         if (activitylog) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:activitylog',?,strftime('%s','now'))", [JSON.stringify(activitylog)]);
         if (favorites) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:favorites',?,strftime('%s','now'))", [JSON.stringify(favorites)]);
+        if (trash) db.run("INSERT OR REPLACE INTO store(key,value,updated_at) VALUES('ow:trash',?,strftime('%s','now'))", [JSON.stringify(trash)]);
         db.run("COMMIT", (err) => err ? reject(err) : resolve());
       });
     });
@@ -983,9 +999,9 @@ async function writeExcelBackup(filePath, items, sales, extra = {}) {
 
 async function runBackup() {
   try {
-    const [itemsRow, salesRow, usersRow, settingsRow, suppliersRow, rolesRow, listsRow, activityRow, favoritesRow] = await Promise.all([
+    const [itemsRow, salesRow, usersRow, settingsRow, suppliersRow, rolesRow, listsRow, activityRow, favoritesRow, trashRow] = await Promise.all([
       dbGet("ow:items"), dbGet("ow:sales"), dbGet("ow:users"), dbGet("ow:settings"), dbGet("ow:suppliers"),
-      dbGet("ow:roles"), dbGet("ow:lists"), dbGet("ow:activitylog"), dbGet("ow:favorites")
+      dbGet("ow:roles"), dbGet("ow:lists"), dbGet("ow:activitylog"), dbGet("ow:favorites"), dbGet("ow:trash")
     ]);
     const items = itemsRow ? JSON.parse(itemsRow.value) : [];
     // Samla ihop bilderna så backupen blir komplett
@@ -1013,6 +1029,7 @@ async function runBackup() {
       lists: parse(listsRow, null),
       activitylog: parse(activityRow, []),
       favorites: parse(favoritesRow, []),
+      trash: parse(trashRow, []),
     };
     const stamp = new Date().toISOString().slice(0,10);
     const BACKUP_DIR = getBackupDir();
@@ -1054,6 +1071,41 @@ setInterval(() => {
       lastBackupKey = key;
       console.log("[backup] Fredag 22:00 — kör automatisk backup...");
       runBackup();
+    }
+  }
+}, 60 * 1000);
+
+// ── Papperskorg — städa bort artiklar som legat i papperskorgen 30+ dagar ──
+// Körs varje natt 03:00. Tar bort både trash-posten OCH dess bilder permanent.
+let lastTrashPurgeKey = "";
+setInterval(async () => {
+  const now = new Date();
+  if (now.getHours() === 3 && now.getMinutes() === 0) {
+    const key = now.toISOString().slice(0,10);
+    if (key !== lastTrashPurgeKey) {
+      lastTrashPurgeKey = key;
+      try {
+        const row = await dbGet("ow:trash");
+        const trash = row ? JSON.parse(row.value) : [];
+        if (!trash.length) return;
+        const cutoff = Date.now() - 30 * 864e5;
+        const keep = [];
+        let purged = 0;
+        for (const entry of trash) {
+          if ((entry.deletedAt || 0) < cutoff) {
+            db.run("DELETE FROM images WHERE item_id=?", [entry.id]);
+            purged++;
+          } else {
+            keep.push(entry);
+          }
+        }
+        if (purged > 0) {
+          await dbSet("ow:trash", JSON.stringify(keep));
+          console.log(`[papperskorg] Rensade ${purged} artiklar äldre än 30 dagar`);
+        }
+      } catch (e) {
+        console.error("[papperskorg] Städning misslyckades:", e.message);
+      }
     }
   }
 }, 60 * 1000);
