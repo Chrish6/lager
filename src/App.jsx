@@ -142,6 +142,17 @@ async function deleteOneItem(id) {
     return r.items || null;
   } catch { return null; }
 }
+// Mjuk borttagning — tas bort från lagerlistan men bilderna behålls på servern,
+// så artikeln går att återställa helt (med bilder) från Papperskorgen i 30 dagar.
+async function softDeleteOneItem(id) {
+  try {
+    const r = await fetch(`${API}/item/soft-delete`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ id })
+    }).then(r=>r.json());
+    return r.items || null;
+  } catch { return null; }
+}
 
 // Bilder — hämta för en artikel
 async function getImages(id) {
@@ -233,6 +244,7 @@ const ALL_PERMISSIONS = [
   { key:"canAdd",         label:"Lägg till del",   icon:"fa-plus" },
   { key:"canEdit",        label:"Redigera del",    icon:"fa-pen" },
   { key:"canDelete",      label:"Ta bort del",     icon:"fa-trash" },
+  { key:"canManageTrash", label:"Hantera papperskorg", icon:"fa-trash-can" },
   { key:"canSell",        label:"Sälj direkt (utan kassa)", icon:"fa-tag" },
   { key:"canUseCheckout", label:"Använd kassan (flera artiklar)", icon:"fa-cart-shopping" },
   { key:"canPrintReceipt",label:"Skriv ut kvitto", icon:"fa-receipt" },
@@ -564,7 +576,7 @@ function useIsMobile() {
 }
 
 // ─── Desktop Sidebar ──────────────────────────────────────────────────────────
-function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSession, toast$, cart, settings }) {
+function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSession, toast$, cart, settings, trash }) {
   const cartCount = (cart||[]).reduce((a,r)=>a+r.qty,0);
   const [netInfo, setNetInfo] = useState(null);
 
@@ -588,6 +600,7 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
     { icon:"truck",        label:"Leverantörer",   route:"suppliers",  show:(isAdmin||can("canManageSuppliers")) },
     { icon:"users",        label:"Användare",      route:"users",      show:(isAdmin||can("canManageUsers")) },
     { icon:"rotate",       label:"Backup",         route:"backup",     show:(isAdmin||can("canBackup")) },
+    { icon:"trash-can",    label:"Papperskorg",    route:"trash",      show:(isAdmin||can("canManageTrash")), badge:(trash||[]).length||null },
     { icon:"sliders",      label:"Inställningar",  route:"settings",   show:(isAdmin||can("canManageSettings")) },
   ].filter(i => i.always || i.show);
 
@@ -757,6 +770,7 @@ function AppInner() {
       let i  = await sget("ow:items");     if (!i)  { i=DEFAULT_ITEMS;    await sset("ow:items",i);  }
       let s  = await sget("ow:sales");     if (!s)  { s=[]; }
       let al = await sget("ow:activitylog"); if (!al) { al=[]; }
+      let tr = await sget("ow:trash"); if (!tr) { tr=[]; }
       let st = await sget("ow:settings"); if (!st) { st={ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK" }; }
       let sup = await sget("ow:suppliers"); if (!sup) { sup=[]; }
       let fav = await sget("ow:favorites"); if (!fav) { fav=[]; }
@@ -779,7 +793,7 @@ function AppInner() {
       // Sätt delta-synk-vattenmärket till senaste kända ändring
       lastSyncRef.current = Array.isArray(i) ? i.reduce((a,it)=>Math.max(a,it.updatedAt||0),0) : 0;
 
-      setUsers(u); setItems(i); setSales(s); setActivityLog(al); setSettings(st); setSuppliers(sup); setFavorites(fav); setRoles(rl); setLists(lst); setLoaded(true);
+      setUsers(u); setItems(i); setSales(s); setActivityLog(al); setTrash(tr); setSettings(st); setSuppliers(sup); setFavorites(fav); setRoles(rl); setLists(lst); setLoaded(true);
 
       // Öppna direkt på artikeln om URL:en innehåller ?item=ID (delad länk)
       try {
@@ -837,6 +851,7 @@ function AppInner() {
     try { const s = localStorage.getItem("ow:cart"); return s ? JSON.parse(s) : []; } catch { return []; }
   });
   const [activityLog, setActivityLog] = useState([]);
+  const [trash, setTrash] = useState([]);
   const [settings, setSettings] = useState({ companyName:"", companyOrg:"", companyPhone:"", companyAddress:"", defaultMargin:40, currency:"SEK", lowStockAlert:2 });
   const [suppliers, setSuppliers] = useState([]);
   const [favorites, setFavorites] = useState([]);
@@ -850,6 +865,21 @@ function AppInner() {
   const saveSuppliers = useCallback(async v => { setSuppliers(v);await sset("ow:suppliers",v); }, []);
   const saveRoles = useCallback(async v => { setRoles(v); await sset("ow:roles",v); }, []);
   const saveLists = useCallback(async v => { setLists(v); await sset("ow:lists",v); }, []);
+  const saveTrash = useCallback(async v => { setTrash(v); await sset("ow:trash",v); }, []);
+  // Flyttar en eller flera artiklar till papperskorgen (håller kvar bilder m.m.)
+  // i 30 dagar innan de städas bort automatiskt av servern.
+  const moveToTrash = useCallback(async (itemsToTrash, deletedBy) => {
+    const arr = Array.isArray(itemsToTrash) ? itemsToTrash : [itemsToTrash];
+    if (!arr.length) return;
+    // Bilderna ligger kvar orörda på servern (soft-delete rör dem inte) — vi
+    // sparar bara metadata i papperskorgen, annars blir den onödigt tung.
+    const entries = arr.map(it => ({ ...it, images: [], deletedAt: Date.now(), deletedBy: deletedBy || "Okänd" }));
+    setTrash(prev => {
+      const next = [...entries, ...prev];
+      sset("ow:trash", next);
+      return next;
+    });
+  }, []);
   const saveFavorites = useCallback(async v => { setFavorites(v);await sset("ow:favorites",v); }, []);
 
   const logActivity = useCallback(async (type, description, extra={}) => {
@@ -953,7 +983,7 @@ function AppInner() {
     return !!currentUser.permissions?.[p];
   };
 
-  const sharedProps = { users, items, sales, cart, setCart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers, theme, setTheme };
+  const sharedProps = { users, items, sales, cart, setCart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers, theme, setTheme, trash, saveTrash, moveToTrash };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -989,7 +1019,7 @@ function AppInner() {
         {/* Desktop sidebar */}
         {showSidebar && (
           <div style={{width:220,flexShrink:0,background:WH,borderRight:`1px solid ${BD}`,overflowY:"auto"}}>
-            <Sidebar currentUser={currentUser} isAdmin={isAdmin} can={can} push={name=>push(name)} currentPage={current.name} stack={stack} setSession={setSession} toast$={toast$} cart={cart} settings={settings}/>
+            <Sidebar currentUser={currentUser} isAdmin={isAdmin} can={can} push={name=>push(name)} currentPage={current.name} stack={stack} setSession={setSession} toast$={toast$} cart={cart} settings={settings} trash={trash}/>
           </div>
         )}
 
@@ -1006,6 +1036,7 @@ function AppInner() {
           {current.name === "users"        && <UsersPage        {...sharedProps} />}
           {current.name === "roles"        && <RolesPage        {...sharedProps} />}
           {current.name === "managelists"  && <ManageListsPage  {...sharedProps} />}
+          {current.name === "trash"         && <TrashPage        {...sharedProps} />}
           {current.name === "profile"       && <ProfilePage      {...sharedProps} />}
           {current.name === "menulayout"    && <MenuLayoutPage   {...sharedProps} />}
           {current.name === "emailnotify"   && <EmailNotifyPage  {...sharedProps} />}
@@ -2741,7 +2772,7 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
     </Page>
   );
 }
-function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
+function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin, currentUser, moveToTrash }) {
   if (!isAdmin && !can("canBulkEdit")) return <Page><TopBar title="Massredigering" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [mode, setMode] = useState("edit"); // "edit" | "delete"
   const [selected, setSelected] = useState(new Set());
@@ -2791,9 +2822,11 @@ function BulkEditPage({ items, saveItems, lists, pop, toast$, can, isAdmin }) {
 
   const applyDelete = async () => {
     if (selected.size===0) return;
+    const toTrash = items.filter(i => selected.has(i.id));
     const remaining = items.filter(i => !selected.has(i.id));
     await saveItems(remaining);
-    toast$(`${selected.size} artiklar borttagna`,"success");
+    moveToTrash?.(toTrash, currentUser?.username);
+    toast$(`${selected.size} artiklar flyttade till papperskorgen`,"success");
     setSelected(new Set()); setConfirmDelete(false);
   };
 
@@ -3008,7 +3041,7 @@ function SuppliersPage({ suppliers, saveSuppliers, items, pop, toast$, can, isAd
 }
 
 // ─── Backup Page ──────────────────────────────────────────────────────────────
-function BackupPage({ items, sales, users, settings, suppliers, roles, lists, activityLog, favorites, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, saveRoles, saveLists, setItems, setSales, setSettings, setSuppliers, pop, toast$, can, isAdmin }) {
+function BackupPage({ items, sales, users, settings, suppliers, roles, lists, activityLog, favorites, trash, saveItems, saveSales, saveUsers, saveSettings, saveSuppliers, saveRoles, saveLists, saveTrash, setItems, setSales, setSettings, setSuppliers, pop, toast$, can, isAdmin }) {
   if (!isAdmin && !can("canBackup")) return <Page><TopBar title="Backup" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [restoring, setRestoring] = useState(false);
   const fileRef = useRef(null);
@@ -3024,7 +3057,7 @@ function BackupPage({ items, sales, users, settings, suppliers, roles, lists, ac
         itemsWithImages.push(it);
       }
     }
-    const data = { version:4, exportedAt:new Date().toISOString(), items: itemsWithImages, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers, roles, lists, activitylog: activityLog, favorites };
+    const data = { version:4, exportedAt:new Date().toISOString(), items: itemsWithImages, sales, users: users.map(u=>({...u,password:undefined})), settings, suppliers, roles, lists, activitylog: activityLog, favorites, trash };
     const json = JSON.stringify(data, null, 2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([json],{type:"application/json"}));
@@ -3063,6 +3096,7 @@ function BackupPage({ items, sales, users, settings, suppliers, roles, lists, ac
             lists: isFirst ? (data.lists || null) : null,
             activitylog: isFirst ? (data.activitylog || null) : null,
             favorites: isFirst ? (data.favorites || null) : null,
+            trash: isFirst ? (data.trash || null) : null,
           }),
         });
         if (!res.ok) {
@@ -3082,6 +3116,7 @@ function BackupPage({ items, sales, users, settings, suppliers, roles, lists, ac
       if (data.suppliers) setSuppliers?.(data.suppliers);
       if (data.roles) saveRoles?.(data.roles);
       if (data.lists) saveLists?.(data.lists);
+      if (data.trash) saveTrash?.(data.trash);
 
       toast$(`Klart! ${finalItems.length} delar återställda — laddar om…`,"success");
       // Ladda om så allt (roller, listor, logg, användare) säkert syns
@@ -3373,7 +3408,7 @@ const gridComponents = {
 };
 
 // ─── Inventory Page ───────────────────────────────────────────────────────────
-function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, cart, addToCart, settings }) {
+function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSession, push, toast$, saveItems, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, cart, addToCart, settings, moveToTrash }) {
   const [showSort, setShowSort] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const setFilters = applyFilters;
@@ -3442,10 +3477,12 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
   const [confirmDel, setConfirmDel] = useState(null); // id to confirm
   const del = async id => { setConfirmDel(id); };
   const confirmDelAction = async () => {
-    const updated = await deleteOneItem(confirmDel);
+    const item = items.find(i=>i.id===confirmDel);
+    const updated = await softDeleteOneItem(confirmDel);
     if (updated) saveItems(updated);
     else await saveItems(items.filter(i=>i.id!==confirmDel));
-    toast$("Borttagen","success"); setConfirmDel(null);
+    if (item) moveToTrash?.(item, currentUser?.username);
+    toast$("Flyttad till papperskorgen","success"); setConfirmDel(null);
   };
 
   const exportCSV = () => {
@@ -3518,6 +3555,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
               {icon:"truck",         label:"Leverantörer",   route:"suppliers",   show:isAdmin||can("canManageSuppliers")},
               {icon:"users",         label:"Användare",      route:"users",       show:isAdmin||can("canManageUsers")},
               {icon:"rotate",        label:"Backup",         route:"backup",      show:isAdmin||can("canBackup")},
+              {icon:"trash-can",     label:"Papperskorg",    route:"trash",       show:isAdmin||can("canManageTrash")},
               {icon:"sliders",       label:"Inställningar",  route:"settings",    show:isAdmin||can("canManageSettings")},
               ].filter(m=>m.show);
               const layout = settings?.menuLayout || {};
@@ -3829,16 +3867,18 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
 });
 
 // ─── Variants Page — choose between physical copies of same part ───────────────
-function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, toast$, saveItems }) {
+function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, toast$, saveItems, currentUser, moveToTrash }) {
   const group = items.filter(i => i.sku?.trim().toLowerCase() === sku?.trim().toLowerCase());
   const [selected, setSelected] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
   const del = async (id) => {
-    const updated = await deleteOneItem(id);
+    const item = items.find(i=>i.id===id);
+    const updated = await softDeleteOneItem(id);
     if (updated) saveItems(updated);
     else await saveItems(items.filter(i=>i.id!==id));
-    toast$("Borttagen","success");
+    if (item) moveToTrash?.(item, currentUser?.username);
+    toast$("Flyttad till papperskorgen","success");
     setConfirmDel(null);
     if(group.length<=1) pop();
   };
@@ -4599,7 +4639,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
 }
 
 // ─── Detail Page ──────────────────────────────────────────────────────────────
-function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, addToCart, can, isAdmin, currentUser, push, pop, toast$, openReserve, logActivity }) {
+function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, addToCart, can, isAdmin, currentUser, push, pop, toast$, openReserve, logActivity, moveToTrash }) {
   // Get fresh item from store in case it was updated
   const item = items.find(i=>i.id===initialItem.id) || initialItem;
   const isMobile = useIsMobile();
@@ -4664,12 +4704,13 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
   };
 
   const doDelete = async () => {
-    const updated = await deleteOneItem(item.id);
+    const updated = await softDeleteOneItem(item.id);
     if (updated) saveItems(updated);
     else await saveItems(items.filter(i=>i.id!==item.id));
+    moveToTrash?.(item, currentUser?.username);
     setConfirmDel(false);
     logActivity&&logActivity("delete", `Tog bort ${item.name}${item.stockNumber?` (#${item.stockNumber})`:""}`, { user: currentUser?.username });
-    toast$("Del borttagen","success");
+    toast$("Flyttad till papperskorgen","success");
     pop();
   };
 
@@ -5357,6 +5398,14 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
     setF(p => ({ ...p, images: [...(p.images || []), ...compressed] }));
   };
   const rmImg = i => set("images",f.images.filter((_,idx)=>idx!==i));
+  // Flytta en bild i galleriet — första bilden blir alltid kortets omslagsbild
+  const moveImg = (i, dir) => {
+    const imgs = [...(f.images||[])];
+    const j = i + dir;
+    if (j < 0 || j >= imgs.length) return;
+    [imgs[i], imgs[j]] = [imgs[j], imgs[i]];
+    set("images", imgs);
+  };
 
   const missing = [];
   if (!f.name?.trim()) missing.push("Namn");
@@ -5479,12 +5528,19 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
 
         {/* Images */}
         <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Bilder</div>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Bilder{(f.images||[]).length>1?" — pilarna ändrar ordning, första bilden blir omslag":""}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {(f.images||[]).map((img,i)=>(
               <div key={i} style={{position:"relative"}}>
-                <img src={img} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${BD}`}}/>
-                <button onClick={()=>rmImg(i)} style={{position:"absolute",top:-6,right:-6,background:R,color:WH,border:"none",borderRadius:"50%",width:20,height:20,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                <img src={img} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?B:BD}`}}/>
+                {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center"}}><span style={{background:B,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
+                <button onClick={()=>rmImg(i)} style={{position:"absolute",top:-6,right:-6,background:R,color:WH,border:"none",borderRadius:"50%",width:20,height:20,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>×</button>
+                {(f.images||[]).length>1&&(
+                  <div style={{position:"absolute",top:-6,left:-6,display:"flex",flexDirection:"column",gap:2}}>
+                    <button onClick={()=>moveImg(i,-1)} disabled={i===0} style={{width:18,height:18,borderRadius:"50%",border:`1px solid ${BD}`,background:i===0?BG:WH,color:i===0?BD:B,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:i===0?"default":"pointer",padding:0}}><i className="fa-solid fa-chevron-up"/></button>
+                    <button onClick={()=>moveImg(i,1)} disabled={i===(f.images||[]).length-1} style={{width:18,height:18,borderRadius:"50%",border:`1px solid ${BD}`,background:i===(f.images||[]).length-1?BG:WH,color:i===(f.images||[]).length-1?BD:B,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",cursor:i===(f.images||[]).length-1?"default":"pointer",padding:0}}><i className="fa-solid fa-chevron-down"/></button>
+                  </div>
+                )}
               </div>
             ))}
             <button onClick={()=>fRef.current.click()} title="Välj en eller flera bilder" style={{width:70,height:70,borderRadius:8,border:`1.5px dashed ${BD}`,background:BG,color:MU,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus"/></button>
@@ -6221,6 +6277,7 @@ function MenuLayoutPage({ settings, saveSettings, pop, toast$, isAdmin, can }) {
     { route:"suppliers",  label:"Leverantörer",  icon:"truck" },
     { route:"users",      label:"Användare",     icon:"users" },
     { route:"backup",     label:"Backup",        icon:"rotate" },
+    { route:"trash",      label:"Papperskorg",   icon:"trash-can" },
     { route:"settings",   label:"Inställningar", icon:"sliders", locked:true },
   ];
   const byRoute = Object.fromEntries(ALL.map(x=>[x.route,x]));
@@ -6421,6 +6478,131 @@ function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
 
         <Btn full variant="red" onClick={save} disabled={saving}><Icon name="check"/> Spara inställningar</Btn>
       </div>
+    </Page>
+  );
+}
+
+// ─── Papperskorg — borttagna delar, återställningsbara i 30 dagar ────────────
+function TrashPage({ trash, saveTrash, items, saveItems, currentUser, isAdmin, can, pop, toast$ }) {
+  if (!isAdmin && !can("canManageTrash")) return <Page><TopBar title="Papperskorg" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+
+  const [search, setSearch] = useState("");
+  const [confirmPurgeAll, setConfirmPurgeAll] = useState(false);
+  const [confirmPurgeOne, setConfirmPurgeOne] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  const list = (trash||[])
+    .filter(t => !search.trim() || [t.name,t.oem,t.stockNumber,t.sku].some(f=>f?.toLowerCase().includes(search.trim().toLowerCase())))
+    .sort((a,b)=>b.deletedAt-a.deletedAt);
+
+  const daysLeft = deletedAt => Math.max(0, 30 - Math.floor((Date.now()-deletedAt)/864e5));
+
+  const restore = async (entry) => {
+    setBusy(entry.id);
+    const { deletedAt, deletedBy, images, ...clean } = entry;
+    // Bilderna finns fortfarande kvar på servern under samma id — de kommer
+    // tillbaka automatiskt så fort artikeln finns i lagerlistan igen.
+    const restored = { ...clean, updatedAt: Date.now() };
+    const res = await saveOneItem(restored);
+    if (res) saveItems(res);
+    else await saveItems([...items, restored]);
+    await saveTrash((trash||[]).filter(t=>t.id!==entry.id));
+    setBusy(null);
+    toast$(`${entry.name} återställd`,"success");
+  };
+
+  const purgeOne = async (id) => {
+    setBusy(id);
+    await deleteOneItem(id); // rensar ev. kvarvarande bilder på servern permanent
+    await saveTrash((trash||[]).filter(t=>t.id!==id));
+    setBusy(null);
+    setConfirmPurgeOne(null);
+    toast$("Borttagen permanent","success");
+  };
+
+  const purgeAll = async () => {
+    setBusy("all");
+    for (const t of (trash||[])) { await deleteOneItem(t.id); }
+    await saveTrash([]);
+    setBusy(null);
+    setConfirmPurgeAll(false);
+    toast$("Papperskorgen tömd","success");
+  };
+
+  return (
+    <Page flush noAnim>
+      <TopBar title="Papperskorg" onBack={pop} subtitle={`${(trash||[]).length} borttagna delar · rensas efter 30 dagar`}
+        right={(trash||[]).length>0?<button onClick={()=>setConfirmPurgeAll(true)} style={{background:"none",border:"none",color:R,fontWeight:600,fontSize:13,cursor:"pointer"}}>Töm allt</button>:null}/>
+      <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 14px 20px"}}>
+        <div style={{position:"relative",marginBottom:14}}>
+          <Icon name="magnifying-glass" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MU,fontSize:13}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök i papperskorgen…"
+            style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:8,padding:"10px 12px 10px 34px",fontSize:14,boxSizing:"border-box"}}/>
+        </div>
+
+        {list.length===0&&(
+          <div style={{textAlign:"center",padding:50,color:MU}}>
+            <i className="fa-solid fa-trash-can" style={{fontSize:32,marginBottom:12,display:"block",opacity:.4}}/>
+            {(trash||[]).length===0 ? "Papperskorgen är tom" : "Inga träffar"}
+          </div>
+        )}
+
+        {list.map(entry=>{
+          const dleft = daysLeft(entry.deletedAt);
+          return (
+            <div key={entry.id} style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:"12px 14px",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                    {entry.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{entry.stockNumber}</span>}
+                    <span style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.name}{entry.side?` — ${entry.side}`:""}</span>
+                  </div>
+                  <div style={{fontSize:11,color:MU}}>
+                    {entry.oem&&<span style={{fontFamily:"monospace"}}>{entry.oem}</span>}
+                    {entry.oem&&" · "}
+                    Borttagen av {entry.deletedBy} · {new Date(entry.deletedAt).toLocaleDateString("sv-SE")}
+                  </div>
+                  <div style={{fontSize:11,marginTop:3,color:dleft<=5?R:AM,fontWeight:600}}>
+                    <Icon name="clock" style={{fontSize:10,marginRight:4}}/>
+                    {dleft>0?`${dleft} dagar kvar innan permanent radering`:"Rensas snart permanent"}
+                  </div>
+                </div>
+                <div style={{fontWeight:800,fontSize:14,color:B,flexShrink:0}}>{(entry.price||0).toLocaleString("sv-SE")} kr</div>
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <Btn small full onClick={()=>restore(entry)} disabled={busy===entry.id}><Icon name="rotate-left"/> Återställ</Btn>
+                <Btn small variant="ghost" onClick={()=>setConfirmPurgeOne(entry)} disabled={busy===entry.id} style={{color:R}}><Icon name="trash"/></Btn>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {confirmPurgeOne&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmPurgeOne(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:320,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:R}}>Ta bort permanent?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}><strong style={{color:TX}}>{confirmPurgeOne.name}</strong> tas bort permanent, inklusive bilder. Går inte att ångra.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmPurgeOne(null)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={()=>purgeOne(confirmPurgeOne.id)}>Ta bort permanent</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmPurgeAll&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setConfirmPurgeAll(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:20,maxWidth:340,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:R}}>Töm hela papperskorgen?</div>
+            <div style={{fontSize:13,color:MU,marginBottom:16}}>Alla <strong style={{color:TX}}>{(trash||[]).length} delar</strong> tas bort permanent, inklusive bilder. Går inte att ångra.</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full variant="ghost" onClick={()=>setConfirmPurgeAll(false)}>Avbryt</Btn>
+              <Btn full variant="red" onClick={purgeAll} disabled={busy==="all"}>Töm papperskorgen</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
