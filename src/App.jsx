@@ -391,6 +391,22 @@ html,body{height:100%;background:${BG};}
    På enheter utan notch är env() = 0 och detta gör ingen skillnad. */
 .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
 .pwa-mode .topbar-safe{padding-top:env(safe-area-inset-top)!important;}
+
+/* ── Mörkt tema ──────────────────────────────────────────────────────────
+   Appen är byggd med hårdkodade ljusa färger på tusentals ställen, så en
+   riktig "äkta" mörk palett skulle kräva att skriva om nästan all styling.
+   I stället används ett beprövat trick: invertera hela sidans färger med
+   ett CSS-filter, och invertera sedan tillbaka bilder/QR-video/canvas så
+   att foton och QR-koder ser normala ut. Resultatet är ett fungerande
+   mörkt läge utan att röra själva komponenterna. */
+html.theme-dark{background:#0b0e14;}
+html.theme-dark body{filter:invert(1) hue-rotate(180deg);background:#fff;}
+html.theme-dark img,
+html.theme-dark video,
+html.theme-dark canvas,
+html.theme-dark iframe,
+html.theme-dark [style*="background-image"]{filter:invert(1) hue-rotate(180deg);}
+html.theme-dark ::-webkit-scrollbar{background:#0b0e14;}
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
 input,select,textarea,button{font-family:'Barlow',sans-serif;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:${B}!important;box-shadow:0 0 0 3px ${B}18!important;}
@@ -647,9 +663,14 @@ function Sidebar({ currentUser, isAdmin, can, push, currentPage, stack, setSessi
         </div>
       )}
 
-      {/* Logout */}
+      {/* Profil + Logout */}
       {currentUser && (
-        <div style={{padding:"10px",borderTop:`1px solid ${BD}`}}>
+        <div style={{padding:"10px",borderTop:`1px solid ${BD}`,display:"flex",flexDirection:"column",gap:2}}>
+          <button onClick={()=>push("profile")}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,border:"none",background:"transparent",color:TM,fontWeight:500,fontSize:13,cursor:"pointer"}}>
+            <Icon name="user-gear" style={{fontSize:14,color:MU}}/>
+            Min profil
+          </button>
           <button onClick={()=>{clearSession();setSession(null);toast$("Utloggad");push("inventory");}}
             style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,border:"none",background:"transparent",color:R,fontWeight:500,fontSize:13,cursor:"pointer"}}>
             <Icon name="right-from-bracket" style={{fontSize:14,color:R}}/>
@@ -876,6 +897,43 @@ function AppInner() {
     setCurrentUsername(u);
   }, [session, users]);
 
+  // ── Tema (mörkt/ljust/system) — sparas per enhet, inte per användare ──
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("ow:theme") || "system"; } catch { return "system"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("ow:theme", theme); } catch {}
+    const apply = () => {
+      const dark = theme==="dark" || (theme==="system" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.toggle("theme-dark", dark);
+    };
+    apply();
+    if (theme==="system" && window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener?.("change", apply);
+      return () => mq.removeEventListener?.("change", apply);
+    }
+  }, [theme]);
+
+  // ── Global sökgenväg — tryck "/" varsomhelst för att hoppa till lagrets sök ──
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/") return;
+      const el = document.activeElement;
+      const typing = el && (el.tagName==="INPUT" || el.tagName==="TEXTAREA" || el.tagName==="SELECT" || el.isContentEditable);
+      if (typing) return; // låt användaren skriva "/" i ett fält som vanligt
+      e.preventDefault();
+      if (current?.name !== "inventory") push("inventory");
+      // Vänta en tick så sidan hunnit renderas innan vi fokuserar fältet
+      setTimeout(() => {
+        const input = document.getElementById("main-search-input");
+        if (input) { input.focus(); input.select(); }
+      }, 60);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [current?.name]);
+
   if (!loaded) return (
     <div style={{minHeight:"100vh",background:BG,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <style>{CSS}</style>
@@ -895,7 +953,7 @@ function AppInner() {
     return !!currentUser.permissions?.[p];
   };
 
-  const sharedProps = { users, items, sales, cart, setCart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers };
+  const sharedProps = { users, items, sales, cart, setCart, addToCart, clearCart, activityLog, logActivity, settings, saveSettings, suppliers, saveSuppliers, favorites, saveFavorites, saveItems, saveUsers, saveSales, roles, saveRoles, lists, saveLists, session, setSession, currentUser, isAdmin, can, toast$, push, pop, replace, viewMode, setViewMode, filters, applyFilters, search, setSearch, sortPref, setSortPref, setItems, setSales, setSettings, setSuppliers, theme, setTheme };
   const showSidebar = !isMobile && currentUser;
 
   return (
@@ -948,7 +1006,9 @@ function AppInner() {
           {current.name === "users"        && <UsersPage        {...sharedProps} />}
           {current.name === "roles"        && <RolesPage        {...sharedProps} />}
           {current.name === "managelists"  && <ManageListsPage  {...sharedProps} />}
+          {current.name === "profile"       && <ProfilePage      {...sharedProps} />}
           {current.name === "menulayout"    && <MenuLayoutPage   {...sharedProps} />}
+          {current.name === "emailnotify"   && <EmailNotifyPage  {...sharedProps} />}
           {current.name === "editrole"     && <EditRolePage     {...sharedProps} {...current.props} />}
           {current.name === "edituser"     && <EditUserPage     {...sharedProps} {...current.props} />}
           {current.name === "perms"        && <PermsPage        {...sharedProps} {...current.props} />}
@@ -1091,6 +1151,8 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
     saveItems(latestItems);
     await saveSales([...saleEntries, ...(sales||[])]);
     logActivity&&logActivity("sale", `Kassaköp: ${saleEntries.reduce((a,e)=>a+e.qty,0)} delar för ${grandTotal.toLocaleString("sv-SE")} kr (${buyer.trim()||"Okänd"})`, { user: currentUser?.username });
+    // Meddela admin om köpet är stort (tröskel styrs i Inställningar → E-postnotiser)
+    fetch("/admin/api/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"large_sale",total:grandTotal,buyer:buyer.trim()||"Okänd",soldBy:currentUser?.username})}).catch(()=>{});
     clearCart();
 
     toast$(`Kassa klar — ${grandTotal.toLocaleString("sv-SE")} kr`, "success");
@@ -2166,10 +2228,37 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
   const byCat = {};
   filtered.forEach(s=>{
     const item = items.find(i=>i.id===s.itemId);
-    const cat = item?.category||"Okänd";
+    const cat = item?.category || s.itemSnapshot?.category || "Okänd";
     byCat[cat]=(byCat[cat]||0)+s.total;
   });
   const catList = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  // Marginal per kategori — intäkt, vinst och marginal% (kräver inköpspris, som redan finns per försäljning)
+  const byCatMargin = {};
+  filtered.forEach(s=>{
+    const item = items.find(i=>i.id===s.itemId);
+    const cat = item?.category || s.itemSnapshot?.category || "Okänd";
+    if (!byCatMargin[cat]) byCatMargin[cat] = { rev:0, profit:0, count:0 };
+    byCatMargin[cat].rev += s.total;
+    byCatMargin[cat].profit += (s.profit||0);
+    byCatMargin[cat].count += 1;
+  });
+  const catMarginList = Object.entries(byCatMargin)
+    .map(([cat,v])=>({ cat, ...v, margin: v.rev>0 ? Math.round(v.profit/v.rev*100) : 0 }))
+    .sort((a,b)=>b.profit-a.profit);
+
+  // Marginal per del — vilka delar/artiklar som ger mest respektive minst vinst
+  const byItem = {};
+  filtered.forEach(s=>{
+    const key = s.itemStockNumber || s.itemSku || s.itemName;
+    if (!byItem[key]) byItem[key] = { name:s.itemName, stockNumber:s.itemStockNumber, rev:0, profit:0, qty:0 };
+    byItem[key].rev += s.total;
+    byItem[key].profit += (s.profit||0);
+    byItem[key].qty += s.qty;
+  });
+  const itemMarginList = Object.values(byItem).map(v=>({ ...v, margin: v.rev>0 ? Math.round(v.profit/v.rev*100) : 0 }));
+  const topProfit = [...itemMarginList].sort((a,b)=>b.profit-a.profit).slice(0,5);
+  const lowMargin  = [...itemMarginList].filter(x=>x.rev>0).sort((a,b)=>a.margin-b.margin).slice(0,5);
 
   const exportReport = () => {
     const rows = [["Datum","Artikel","Antal","Pris","Rabatt%","Totalt","Vinst","Säljare","Kund","Betalning"]];
@@ -2244,7 +2333,60 @@ function ReportsPage({ sales, items, users, can, isAdmin, push, pop }) {
           </div>
         )}
 
-        {/* Per kategori */}
+        {/* Marginal per kategori */}
+        {catMarginList.length>0&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Marginal per kategori</div>
+            {catMarginList.map(c=>(
+              <div key={c.cat} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${BD}40`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.cat}</div>
+                  <div style={{fontSize:11,color:MU}}>{c.count} affärer · {c.rev.toLocaleString("sv-SE")} kr intäkt</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:14,fontWeight:800,color:c.profit>=0?GR:R}}>{c.profit.toLocaleString("sv-SE")} kr</div>
+                  <div style={{fontSize:11,color:MU}}>{c.margin}% marginal</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mest lönsamma delar */}
+        {topProfit.length>0&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Mest lönsamma delar</div>
+            {topProfit.map((it,i)=>(
+              <div key={it.name+i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${BD}40`}}>
+                <div style={{width:20,height:20,borderRadius:"50%",background:GR+"15",color:GR,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.stockNumber?`#${it.stockNumber} `:""}{it.name}</div>
+                  <div style={{fontSize:10,color:MU}}>{it.qty} sålda</div>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:GR,flexShrink:0}}>{it.profit.toLocaleString("sv-SE")} kr</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Lägst marginal — värt att se över priset på */}
+        {lowMargin.length>0&&(
+          <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Lägst marginal — värt att se över</div>
+            {lowMargin.map((it,i)=>(
+              <div key={it.name+i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${BD}40`}}>
+                <div style={{width:20,height:20,borderRadius:"50%",background:AM+"15",color:AM,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="triangle-exclamation" style={{fontSize:9}}/></div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.stockNumber?`#${it.stockNumber} `:""}{it.name}</div>
+                  <div style={{fontSize:10,color:MU}}>{it.qty} sålda · {it.rev.toLocaleString("sv-SE")} kr intäkt</div>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:it.margin>=0?TX:R,flexShrink:0}}>{it.margin}%</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Per kategori (intäkt) */}
         {catList.length>0&&(
           <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:14,marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>Per kategori</div>
@@ -2427,6 +2569,9 @@ function SettingsPage({ settings, saveSettings, items, sales, users, push, pop, 
             </button>
             <button onClick={()=>push("menulayout")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="bars-staggered" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>Meny-layout (ordna &amp; dölj)</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
+            </button>
+            <button onClick={()=>push("emailnotify")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
+              <Icon name="envelope" style={{color:B}}/><span style={{fontSize:13,fontWeight:600}}>E-postnotiser</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
             </button>
             <button onClick={()=>push("backup")} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",background:"none",border:"none",borderBottom:`1px solid ${BD}50`,cursor:"pointer",textAlign:"left"}}>
               <Icon name="rotate" style={{color:B}}/> <span style={{fontSize:13,fontWeight:600}}>Backup & Återställning</span><Icon name="arrow-up" style={{marginLeft:"auto",color:MU,transform:"rotate(90deg)"}}/>
@@ -3036,13 +3181,17 @@ const sc = q => q===0?R:GR;
 const cc = c => c==="Ny"?GR:c?.includes("Gott")?B:c?.includes("spricka")?AM:MU;
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
-function LoginPage({ users, saveUsers, setSession, push, pop, toast$ }) {
+function LoginPage({ users, saveUsers, setSession, push, pop, toast$, logActivity }) {
   const [u, setU] = useState(""); const [p, setP] = useState("");
   const [loading, setLoading] = useState(false);
   const login = async () => {
     setLoading(true);
     const match = users.find(x=>x.username.toLowerCase()===u.toLowerCase());
-    if (!match) { toast$("Fel inloggningsuppgifter","error"); setLoading(false); return; }
+    if (!match) {
+      toast$("Fel inloggningsuppgifter","error"); setLoading(false);
+      fetch("/admin/api/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"failed_login",username:u})}).catch(()=>{});
+      return;
+    }
 
     const hashed = await hashPassword(p);
     let ok = match.password === hashed;
@@ -3053,12 +3202,17 @@ function LoginPage({ users, saveUsers, setSession, push, pop, toast$ }) {
       await saveUsers(users.map(x=>x.id===match.id?{...x,password:hashed}:x));
     }
 
-    if (!ok) { toast$("Fel inloggningsuppgifter","error"); setLoading(false); return; }
+    if (!ok) {
+      toast$("Fel inloggningsuppgifter","error"); setLoading(false);
+      fetch("/admin/api/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"failed_login",username:u})}).catch(()=>{});
+      return;
+    }
 
     saveSession(match.id);
     setSession(match.id);
     setCurrentUsername(match.username);
     reportEvent("login", `${match.username} loggade in`);
+    logActivity&&logActivity("login", `${match.username} loggade in`, { user: match.username });
     pop();
     toast$(`Välkommen, ${match.username}!`,"success");
     setLoading(false);
@@ -3259,8 +3413,14 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                 <span style={{fontSize:14,fontWeight:500,color:TX}}>{m.label}</span>
               </button>
             ))}
-            {/* Logout */}
+            {/* Profil + Logout */}
             <div style={{borderTop:`1px solid ${BD}`,margin:"8px 0 0"}}/>
+            <button onClick={()=>{setMenuOpen(false);push("profile");}} style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:9,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon name="user-gear" style={{fontSize:15,color:B}}/>
+              </div>
+              <span style={{fontSize:14,fontWeight:500,color:TX}}>Min profil</span>
+            </button>
             <button onClick={()=>{setMenuOpen(false);clearSession();setSession(null);toast$("Utloggad");}} style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"12px 20px",background:"none",border:"none",cursor:"pointer",color:R}}>
               <div style={{width:36,height:36,borderRadius:9,background:R+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 <Icon name="right-from-bracket" style={{fontSize:15,color:R}}/>
@@ -3284,7 +3444,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
           {/* Rad 1 — sökfält */}
           <div style={{position:"relative"}}>
             <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:MU,pointerEvents:"none"}}><Icon name="magnifying-glass"/></span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, OEM, lagernr…"
+            <input id="main-search-input" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Sök namn, OEM, lagernr… (tryck / för att söka)"
               style={{width:"100%",padding:"10px 10px 10px 32px",border:`1.5px solid ${BD}`,borderRadius:8,fontSize:13,color:TX,background:WH,boxShadow:SH,boxSizing:"border-box"}} />
           </div>
           {/* Rad 2 — knappar */}
@@ -5043,8 +5203,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
   ) : null;
 
   // Komprimera bilden innan den sparas — minskar storleken drastiskt
-  const addImg = file => {
-    if (!file) return;
+  const compressImage = (file) => new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
@@ -5059,13 +5218,21 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
         // JPEG med 70% kvalitet — mycket mindre än original
-        const compressed = canvas.toDataURL("image/jpeg", 0.7);
-        set("images", [...(f.images || []), compressed]);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
       };
-      img.onerror = () => set("images", [...(f.images || []), e.target.result]);
+      img.onerror = () => resolve(e.target.result);
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  });
+  // Tar en FileList (flera bilder samtidigt) eller en enstaka fil.
+  // Använder funktionell uppdatering så bilderna inte skriver över varandra
+  // när flera väljs på en gång.
+  const addImg = async (files) => {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
+    const compressed = await Promise.all(list.map(compressImage));
+    setF(p => ({ ...p, images: [...(p.images || []), ...compressed] }));
   };
   const rmImg = i => set("images",f.images.filter((_,idx)=>idx!==i));
 
@@ -5198,11 +5365,11 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
                 <button onClick={()=>rmImg(i)} style={{position:"absolute",top:-6,right:-6,background:R,color:WH,border:"none",borderRadius:"50%",width:20,height:20,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
               </div>
             ))}
-            <button onClick={()=>fRef.current.click()} style={{width:70,height:70,borderRadius:8,border:`1.5px dashed ${BD}`,background:BG,color:MU,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus"/></button>
+            <button onClick={()=>fRef.current.click()} title="Välj en eller flera bilder" style={{width:70,height:70,borderRadius:8,border:`1.5px dashed ${BD}`,background:BG,color:MU,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="plus"/></button>
             <button onClick={()=>cRef.current.click()} style={{width:70,height:70,borderRadius:8,border:`1.5px dashed ${BD}`,background:BG,color:MU,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="camera"/></button>
           </div>
-          <input ref={fRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>addImg(e.target.files[0])}/>
-          <input ref={cRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addImg(e.target.files[0])}/>
+          <input ref={fRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addImg(e.target.files)}/>
+          <input ref={cRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addImg(e.target.files)}/>
         </div>
 
         {/* Beskrivning + kategori/sida/skick */}
@@ -5399,6 +5566,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
     }
     await saveSales([saleEntry,...(sales||[])]);
     logActivity&&logActivity("sale", `Sålde ${qty} × ${item.name}${item.stockNumber?` (#${item.stockNumber})`:""} för ${total.toLocaleString("sv-SE")} kr`, { user: currentUser?.username, itemName:item.name, stockNumber:item.stockNumber });
+    fetch("/admin/api/notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"large_sale",total,buyer:buyer?.trim()||presetBuyer||"Okänd",soldBy:currentUser?.username})}).catch(()=>{});
     toast$(`Sålde ${qty} × ${item.name} — ${total.toLocaleString("sv-SE")} kr`,"success");
     push("receipt",{sale:saleEntry});
   };
@@ -6006,6 +6174,132 @@ function MenuLayoutPage({ settings, saveSettings, pop, toast$, isAdmin, can }) {
   );
 }
 
+function EmailNotifyPage({ isAdmin, can, pop, toast$ }) {
+  if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="E-postnotiser" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
+
+  const DEFAULTS = {
+    enabled: false, fromEmail: "", appPassword: "", adminEmail: "",
+    largePurchaseThreshold: 10000, inactivityDays: 7,
+    notifTypes: { largePurchase:true, inactiveSeller:true, failedLogin:true, serverError:true, backupFailed:true },
+  };
+  const [cfg, setCfg] = useState(DEFAULTS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  useEffect(() => {
+    sget("ow:emailconfig").then(v => { if (v) setCfg({ ...DEFAULTS, ...v, notifTypes:{...DEFAULTS.notifTypes, ...(v.notifTypes||{})} }); setLoading(false); });
+  }, []);
+
+  const set = (k,v) => setCfg(c=>({...c,[k]:v}));
+  const toggleType = k => setCfg(c=>({...c, notifTypes:{...c.notifTypes,[k]:!c.notifTypes[k]}}));
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await sset("ow:emailconfig", cfg);
+    setSaving(false);
+    toast$(ok?"Sparat":"Kunde inte spara", ok?"success":"error");
+  };
+
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const r = await fetch("/admin/api/email-test").then(r=>r.json());
+      if (r.ok) toast$("Testmejl skickat — kolla din inkorg","success");
+      else toast$(r.error || "Kunde inte skicka","error");
+    } catch { toast$("Kunde inte nå servern","error"); }
+    setTesting(false);
+  };
+
+  const NOTIF_TYPES = [
+    { k:"largePurchase", l:"Stort köp genomfört", desc:`Köp över tröskelvärdet nedan (just nu ${Number(cfg.largePurchaseThreshold||0).toLocaleString("sv-SE")} kr)`, icon:"tag" },
+    { k:"inactiveSeller", l:"Säljare inaktiv", desc:`Ingen aktivitet på ett konto på ${cfg.inactivityDays||7}+ dagar — kontrolleras varje morgon 09:00`, icon:"user-clock" },
+    { k:"failedLogin", l:"Misslyckad inloggning", desc:"3+ misslyckade inloggningsförsök på samma konto inom 15 minuter", icon:"triangle-exclamation" },
+    { k:"serverError", l:"Serverfel", desc:"Ett ohanterat fel inträffade på servern (max 1 mejl/30 min)", icon:"bug" },
+    { k:"backupFailed", l:"Backup misslyckades", desc:"Den automatiska veckobackupen kunde inte skapas", icon:"database" },
+  ];
+
+  if (loading) return <Page><TopBar title="E-postnotiser" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}>Laddar…</div></Page>;
+
+  return (
+    <Page>
+      <TopBar title="E-postnotiser" onBack={pop} subtitle="Viktiga händelser mejlas till huvudadmin" right={<Btn small onClick={save} disabled={saving}>Spara</Btn>}/>
+      <div style={{padding:"14px 14px 40px",display:"flex",flexDirection:"column",gap:14}}>
+
+        {/* På/av */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:14}}>Aktivera e-postnotiser</div>
+            <div style={{fontSize:12,color:MU,marginTop:2}}>Slå av/på alla notiser i ett steg</div>
+          </div>
+          <button onClick={()=>set("enabled",!cfg.enabled)} style={{width:48,height:28,borderRadius:14,border:"none",background:cfg.enabled?GR:BD,position:"relative",cursor:"pointer",flexShrink:0}}>
+            <div style={{width:22,height:22,borderRadius:"50%",background:WH,position:"absolute",top:3,left:cfg.enabled?23:3,transition:"left .15s",boxShadow:SH}}/>
+          </button>
+        </div>
+
+        {/* Gmail-uppgifter */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Avsändare (Gmail)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <Inp label="Gmail-adress" type="email" value={cfg.fromEmail} onChange={e=>set("fromEmail",e.target.value)} placeholder="dittkonto@gmail.com"/>
+            <div style={{position:"relative"}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>App-lösenord</label>
+              <input type={showPw?"text":"password"} value={cfg.appPassword} onChange={e=>set("appPassword",e.target.value)} placeholder="16 tecken från Google"
+                style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:6,padding:"9px 40px 9px 12px",fontSize:14,boxSizing:"border-box",fontFamily:"monospace"}}/>
+              <button onClick={()=>setShowPw(v=>!v)} type="button" style={{position:"absolute",right:8,top:28,background:"none",border:"none",color:MU,cursor:"pointer",padding:6}}>
+                <i className={`fa-solid fa-${showPw?"eye-slash":"eye"}`}/>
+              </button>
+            </div>
+            <div style={{fontSize:11,color:MU}}>Skapas på <span style={{color:B,fontWeight:600}}>myaccount.google.com/security</span> → Tvåstegsverifiering måste vara på → sök "Applösenord".</div>
+          </div>
+        </div>
+
+        {/* Mottagare */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Mottagare (huvudadmin)</div>
+          <Inp label="E-post som ska få notiserna" type="email" value={cfg.adminEmail} onChange={e=>set("adminEmail",e.target.value)} placeholder="chef@exempel.se"/>
+          <div style={{marginTop:12}}>
+            <Btn variant="ghost" onClick={sendTest} disabled={testing}><Icon name="paper-plane"/> {testing?"Skickar…":"Skicka testmejl"}</Btn>
+          </div>
+        </div>
+
+        {/* Tröskelvärden */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Tröskelvärden</div>
+          <G2>
+            <H><Inp label="Stort köp — gräns (kr)" type="number" min="0" value={cfg.largePurchaseThreshold} onChange={e=>set("largePurchaseThreshold",Number(e.target.value))}/></H>
+            <H><Inp label="Inaktivitet — dagar" type="number" min="1" value={cfg.inactivityDays} onChange={e=>set("inactivityDays",Number(e.target.value))}/></H>
+          </G2>
+        </div>
+
+        {/* Vilka notiser */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Vilka notiser ska skickas</div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {NOTIF_TYPES.map(n=>(
+              <div key={n.k} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${BD}40`}}>
+                <div style={{width:34,height:34,borderRadius:8,background:B+"10",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon name={n.icon} style={{color:B,fontSize:14}}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:13}}>{n.l}</div>
+                  <div style={{fontSize:11,color:MU}}>{n.desc}</div>
+                </div>
+                <button onClick={()=>toggleType(n.k)} style={{width:42,height:24,borderRadius:12,border:"none",background:cfg.notifTypes[n.k]?GR:BD,position:"relative",cursor:"pointer",flexShrink:0}}>
+                  <div style={{width:18,height:18,borderRadius:"50%",background:WH,position:"absolute",top:3,left:cfg.notifTypes[n.k]?21:3,transition:"left .15s"}}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Btn full variant="red" onClick={save} disabled={saving}><Icon name="check"/> Spara inställningar</Btn>
+      </div>
+    </Page>
+  );
+}
+
 function ManageListsPage({ lists, saveLists, pop, toast$, isAdmin, can }) {
   if (!isAdmin && !can("canManageSettings")) return <Page><TopBar title="Hantera listor" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}><i className="fa-solid fa-lock" style={{fontSize:32,marginBottom:12,display:"block"}}/>Du saknar behörighet.</div></Page>;
   const [local, setLocal] = useState({
@@ -6220,6 +6514,123 @@ function EditRolePage({ role, roles, saveRoles, pop, toast$ }) {
 }
 
 // ─── Edit User Page ───────────────────────────────────────────────────────────
+// ─── Min profil — varje inloggad användare hanterar sitt eget konto ──────────
+function ProfilePage({ currentUser, users, saveUsers, pop, toast$, theme, setTheme }) {
+  if (!currentUser) return <Page><TopBar title="Min profil" onBack={pop}/><div style={{padding:40,textAlign:"center",color:MU}}>Logga in för att se din profil.</div></Page>;
+
+  const [email, setEmail] = useState(currentUser.email || "");
+  const [phone, setPhone] = useState(currentUser.phone || "");
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const saveContact = async () => {
+    setSaving(true);
+    await saveUsers(users.map(u => u.id===currentUser.id ? {...u, email:email.trim(), phone:phone.trim()} : u));
+    setSaving(false);
+    toast$("Kontaktuppgifter sparade","success");
+  };
+
+  const savePassword = async () => {
+    if (!oldPw.trim()) { toast$("Fyll i ditt nuvarande lösenord","error"); return; }
+    if (!newPw.trim() || newPw.length < 4) { toast$("Det nya lösenordet måste vara minst 4 tecken","error"); return; }
+    if (newPw !== confirmPw) { toast$("De nya lösenorden matchar inte","error"); return; }
+    setSaving(true);
+    const oldHashed = await hashPassword(oldPw.trim());
+    if (oldHashed !== currentUser.password) {
+      setSaving(false);
+      toast$("Fel nuvarande lösenord","error");
+      return;
+    }
+    const hashed = await hashPassword(newPw.trim());
+    await saveUsers(users.map(u => u.id===currentUser.id ? {...u, password:hashed} : u));
+    setSaving(false);
+    setOldPw(""); setNewPw(""); setConfirmPw("");
+    toast$("Lösenord uppdaterat","success");
+  };
+
+  const THEME_OPTIONS = [
+    { k:"system", l:"Följer system", icon:"circle-half-stroke", desc:"Byter automatiskt med enhetens ljusa/mörka läge" },
+    { k:"light",  l:"Ljust",         icon:"sun",                desc:"Alltid ljust tema på den här enheten" },
+    { k:"dark",   l:"Mörkt",         icon:"moon",               desc:"Alltid mörkt tema på den här enheten" },
+  ];
+
+  return (
+    <Page>
+      <TopBar title="Min profil" onBack={pop} subtitle={currentUser.username}/>
+      <div style={{padding:"14px 14px 40px",display:"flex",flexDirection:"column",gap:14}}>
+
+        {/* Konto-info */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:44,height:44,borderRadius:10,background:currentUser.role==="admin"?R:B,display:"flex",alignItems:"center",justifyContent:"center",color:WH,fontWeight:800,fontSize:17,flexShrink:0}}>
+            {currentUser.username[0].toUpperCase()}
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15}}>{currentUser.username}</div>
+            <div style={{fontSize:12,color:MU}}>{currentUser.role==="admin"?"Administratör":(currentUser.roleId ? "Anpassad roll" : "Användare")}</div>
+          </div>
+        </div>
+
+        {/* Kontaktuppgifter */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Kontaktuppgifter</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <Inp label="E-post" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="namn@exempel.se"/>
+            <Inp label="Telefon" type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="070-123 45 67"/>
+          </div>
+          <div style={{marginTop:12}}>
+            <Btn onClick={saveContact} disabled={saving}><Icon name="check"/> Spara kontaktuppgifter</Btn>
+          </div>
+        </div>
+
+        {/* Byt lösenord */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Byt lösenord</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{position:"relative"}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Nuvarande lösenord</label>
+              <input type={showPw?"text":"password"} value={oldPw} onChange={e=>setOldPw(e.target.value)} placeholder="Ditt nuvarande lösenord"
+                style={{width:"100%",border:`1.5px solid ${BD}`,borderRadius:6,padding:"9px 40px 9px 12px",fontSize:14,boxSizing:"border-box"}}/>
+              <button onClick={()=>setShowPw(v=>!v)} type="button" style={{position:"absolute",right:8,top:28,background:"none",border:"none",color:MU,cursor:"pointer",padding:6}}>
+                <i className={`fa-solid fa-${showPw?"eye-slash":"eye"}`}/>
+              </button>
+            </div>
+            <Inp label="Nytt lösenord" type={showPw?"text":"password"} value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Minst 4 tecken"/>
+            <Inp label="Bekräfta nytt lösenord" type={showPw?"text":"password"} value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} placeholder="Upprepa lösenordet"/>
+          </div>
+          <div style={{marginTop:12}}>
+            <Btn variant="red" onClick={savePassword} disabled={saving}><Icon name="key"/> Uppdatera lösenord</Btn>
+          </div>
+        </div>
+
+        {/* Tema */}
+        <div style={{background:WH,borderRadius:10,border:`1px solid ${BD}`,padding:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:12}}>Utseende — den här enheten</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {THEME_OPTIONS.map(o=>(
+              <button key={o.k} onClick={()=>setTheme(o.k)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:9,border:`2px solid ${theme===o.k?B:BD}`,background:theme===o.k?B+"08":WH,cursor:"pointer",textAlign:"left"}}>
+                <div style={{width:34,height:34,borderRadius:8,background:theme===o.k?B:BG,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon name={o.icon} style={{color:theme===o.k?WH:MU,fontSize:14}}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:theme===o.k?B:TX}}>{o.l}</div>
+                  <div style={{fontSize:11,color:MU}}>{o.desc}</div>
+                </div>
+                {theme===o.k&&<Icon name="check" style={{color:B}}/>}
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:MU,marginTop:10}}>Valet sparas bara på den här enheten/webbläsaren — andra som loggar in på andra enheter påverkas inte.</div>
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+
 function EditUserPage({ user, users, roles, saveUsers, pop, toast$ }) {
   // Lösenordsfältet är alltid tomt vid redigering — den lagrade hashen kan
   // inte (och ska inte) visas upp som klartext. Lämnas fältet tomt vid
