@@ -384,6 +384,12 @@ function legacyCopy(text) {
 
 const R="#CC1B2B", B="#1B3A6B", BG="var(--bg)", WH="var(--wh)", BD="var(--bd)";
 const TX="var(--tx)", TM="var(--tm)", MU="var(--mu)", GR="#16A34A", AM="#D97706";
+// BX = samma blå som B, men ljusare i mörkt läge — används där en solid blå
+// yta (badge, lagernummer-chip, platsmarkering) annars skulle bli svår att
+// se mot ett mörkt kort. B självt rörs aldrig (används med genomskinlighets-
+// tricket på många ställen, som kräver ett riktigt hex-värde).
+const BX = "var(--b-solid)";
+const NOTEBG = "var(--note-bg)";
 const SH="0 1px 4px rgba(0,0,0,.08)", SH2="0 4px 20px rgba(0,0,0,.12)";
 
 const CSS = `
@@ -413,14 +419,16 @@ html,body{height:100%;background:${BG};}
 :root{
   --bg:#F4F5F7; --wh:#FFFFFF; --bd:#E2E5EA;
   --tx:#141820; --tm:#3D4451; --mu:#8A90A0;
+  --b-solid:#1B3A6B; --note-bg:#FFFBEB;
 }
 html.theme-dark{
-  --bg:#12161F; --wh:#1C212C; --bd:#323B4D;
-  --tx:#EDEFF3; --tm:#B7BECC; --mu:#8791A3;
+  --bg:#1A2029; --wh:#242B37; --bd:#3A4356;
+  --tx:#E8EBF0; --tm:#AEB6C4; --mu:#838CA0;
+  --b-solid:#4A7CE0; --note-bg:#2E2A18;
   background:var(--bg);
   color-scheme:dark;
 }
-html.theme-dark ::-webkit-scrollbar{background:#12161F;}
+html.theme-dark ::-webkit-scrollbar{background:#1A2029;}
 html.theme-dark ::-webkit-scrollbar-thumb{background:#3A4356;border-radius:4px;}
 html.theme-dark img{opacity:.94;} /* lätt dämpning så vita produktbilder inte bländar mot mörk bakgrund */
 body{font-family:'Barlow',sans-serif;font-size:14px;color:${TX};-webkit-tap-highlight-color:transparent;}
@@ -1002,7 +1010,7 @@ function AppInner() {
 
       {/* PWA Install Banner */}
       {showInstallBanner && (
-        <div style={{position:"fixed",bottom:0,left:0,right:0,background:B,color:WH,padding:"12px 16px",zIndex:998,display:"flex",alignItems:"center",gap:12,boxShadow:"0 -4px 20px rgba(0,0,0,.2)"}}>
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:BX,color:WH,padding:"12px 16px",zIndex:998,display:"flex",alignItems:"center",gap:12,boxShadow:"0 -4px 20px rgba(0,0,0,.2)"}}>
           <div style={{width:36,height:36,background:R,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>
             <i className="fa-solid fa-box-open"/>
           </div>
@@ -1232,7 +1240,7 @@ function CheckoutPage({ cart, setCart, addToCart, clearCart, items, sales, saveI
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
-                    {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
+                    {r.item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
                     <div style={{fontWeight:700,fontSize:13,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</div>
                   </div>
                   <div style={{fontSize:11,color:MU}}>I lager: <span style={{color:sc(r.item.quantity),fontWeight:600}}>{r.item.quantity} st</span></div>
@@ -1567,9 +1575,9 @@ function LocationViewPage({ items, pop, push, can, isAdmin }) {
             return (
               <div key={loc} style={{background:WH,borderRadius:10,border:`1.5px solid ${isOpen?B:BD}`,overflow:"hidden"}}>
                 <div onClick={()=>setExpanded(isOpen?null:loc)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer"}}>
-                  <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B,flexShrink:0}}/>
+                  <i className="fa-solid fa-location-dot" style={{fontSize:14,color:BX,flexShrink:0}}/>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:14,color:B}}>{loc}</div>
+                    <div style={{fontWeight:700,fontSize:14,color:BX}}>{loc}</div>
                     <div style={{fontSize:11,color:MU}}>{locItems.length} delar</div>
                   </div>
                   <i className={`fa-solid fa-chevron-${isOpen?"up":"down"}`} style={{fontSize:12,color:MU}}/>
@@ -1579,7 +1587,7 @@ function LocationViewPage({ items, pop, push, can, isAdmin }) {
                     {locItems.map(item=>(
                       <div key={item.id} onClick={()=>push("detail",{item})}
                         style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:`1px solid ${BD}`,cursor:"pointer",background:WH}}>
-                        <span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:800,flexShrink:0}}>#{item.stockNumber}</span>
+                        <span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:800,flexShrink:0}}>#{item.stockNumber}</span>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
                           {item.oem&&<div style={{fontSize:10,color:MU,fontFamily:"monospace"}}>{item.oem}</div>}
@@ -1755,7 +1763,7 @@ function QrLabelsPage({ items, pop, preSelected }) {
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
                 <div style={{fontSize:11,color:MU,fontFamily:"monospace"}}>
-                  <span style={{background:B,color:WH,borderRadius:3,padding:"0 4px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>
+                  <span style={{background:BX,color:WH,borderRadius:3,padding:"0 4px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>
                   {item.oem||"—"}
                 </div>
               </div>
@@ -3597,7 +3605,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
 
       <div style={{padding:"clamp(14px,2vw,28px)",paddingBottom:80}}>
         {!currentUser && (
-          <div style={{background:"#FFFBEB",border:`1px solid ${AM}40`,borderRadius:8,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{background:NOTEBG,border:`1px solid ${AM}40`,borderRadius:8,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:13,color:AM,fontWeight:600}}>Gästläge — Skrivskyddad</span>
             <button onClick={()=>push("login")} style={{marginLeft:"auto",background:AM,color:WH,border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700}}>Logga in</button>
           </div>
@@ -3635,7 +3643,7 @@ function InventoryPage({ items, sales, can, currentUser, isAdmin, session, setSe
                 <Icon name="list"/>
               </button>
             </div>
-            {can("canAdd") && <button onClick={()=>push("edit",{item:null})} style={{marginLeft:"auto",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"9px 13px",borderRadius:8,border:"none",background:B,color:WH,fontSize:16,boxShadow:SH}}><Icon name="plus"/></button>}
+            {can("canAdd") && <button onClick={()=>push("edit",{item:null})} style={{marginLeft:"auto",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"9px 13px",borderRadius:8,border:"none",background:BX,color:WH,fontSize:16,boxShadow:SH}}><Icon name="plus"/></button>}
           </div>
         </div>
 
@@ -3837,7 +3845,7 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",gap:4,marginBottom:3,flexWrap:"wrap"}}>
             {group.map(item=>(
-              <span key={item.id} style={{background:B,color:WH,borderRadius:5,padding:"2px 7px",fontSize:12,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
+              <span key={item.id} style={{background:BX,color:WH,borderRadius:5,padding:"2px 7px",fontSize:12,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber||"?"}</span>
             ))}
           </div>
           <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{best.name}{best.side?` — ${best.side}`:""}</div>
@@ -3848,8 +3856,8 @@ const GroupCard = React.memo(function GroupCard({ group, can, onOpen }) {
       {/* Placering — stor och tydlig */}
       {location&&(
         <div style={{display:"flex",alignItems:"center",gap:6,background:B+"0A",borderRadius:7,padding:"6px 10px"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B}}/>
-          <span style={{fontSize:15,fontWeight:800,color:B}}>{location}</span>
+          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:BX}}/>
+          <span style={{fontSize:15,fontWeight:800,color:BX}}>{location}</span>
         </div>
       )}
 
@@ -4006,7 +4014,7 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
-            {item.stockNumber&&<span style={{background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber}</span>}
+            {item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:5,padding:"2px 8px",fontSize:13,fontWeight:800,letterSpacing:.3}}>#{item.stockNumber}</span>}
             {item.reservations?.length>0&&<span style={{background:AM,color:WH,borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",gap:3}}><i className="fa-solid fa-bookmark" style={{fontSize:9}}/>{item.reservations.length} res</span>}
           </div>
           <div style={{fontWeight:700,fontSize:14,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}{item.side?` — ${item.side}`:""}</div>
@@ -4017,14 +4025,14 @@ const ItemCard = React.memo(function ItemCard({ item, can, isAdmin, onDetail, on
       {/* Placering — stor och tydlig */}
       {location&&(
         <div style={{display:"flex",alignItems:"center",gap:6,background:B+"0A",borderRadius:7,padding:"6px 10px"}}>
-          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:B}}/>
-          <span style={{fontSize:15,fontWeight:800,color:B}}>{location}</span>
+          <i className="fa-solid fa-location-dot" style={{fontSize:14,color:BX}}/>
+          <span style={{fontSize:15,fontWeight:800,color:BX}}>{location}</span>
         </div>
       )}
 
       {/* Notering — om den finns (en rad) */}
       {item.notes&&(
-        <div style={{background:"#FFFBEB",border:`1px solid ${AM}35`,borderRadius:7,padding:"5px 9px",fontSize:11.5,color:TM,lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        <div style={{background:NOTEBG,border:`1px solid ${AM}35`,borderRadius:7,padding:"5px 9px",fontSize:11.5,color:TM,lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           <i className="fa-solid fa-note-sticky" style={{color:AM,marginRight:5}}/>{item.notes}
         </div>
       )}
@@ -4055,7 +4063,7 @@ function ListRow({ item, can, isAdmin, onDetail, onEdit, onSell, onAddToCart, on
   return (
     <tr style={{borderBottom:`1px solid ${BD}50`,cursor:"pointer",background:bg}} onMouseEnter={()=>setBg(BG)} onMouseLeave={()=>setBg("transparent")} onClick={onDetail}>
       <td style={{padding:"7px 10px"}}><div style={{width:36,height:36,borderRadius:6,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}</div></td>
-      <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>}{item.name}{item.side&&<span style={{color:MU,fontWeight:400}}> — {item.side}</span>}</div>{item.oem&&<div style={{fontSize:11,color:MU}}>Art.nr: {item.oem}</div>}</td>
+      <td style={{padding:"7px 10px"}}><div style={{fontWeight:600,fontSize:13}}>{item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,marginRight:5}}>#{item.stockNumber}</span>}{item.name}{item.side&&<span style={{color:MU,fontWeight:400}}> — {item.side}</span>}</div>{item.oem&&<div style={{fontSize:11,color:MU}}>Art.nr: {item.oem}</div>}</td>
       <td style={{padding:"7px 10px",fontSize:11,color:MU}}>{item.sku}</td>
       <td style={{padding:"7px 10px"}}><Badge label={item.category} color={B} small /></td>
       <td style={{padding:"7px 10px"}}><Badge label={item.condition} color={cc(item.condition)} small /></td>
@@ -4425,13 +4433,13 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
               return (
                 <div key={reg} style={{background:WH,borderRadius:12,border:`1.5px solid ${AM}40`,overflow:"hidden"}}>
                   {/* Bil-header (klickbar dropdown) */}
-                  <div onClick={()=>toggleExpand(reg)} style={{background:AM+"12",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",borderBottom:isOpen?`1px solid ${AM}25`:"none"}}>
+                  <div onClick={()=>toggleExpand(reg)} style={{background:AM+"1A",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",borderBottom:isOpen?`1px solid ${AM}25`:"none"}}>
                     <Icon name={isOpen?"chevron-down":"chevron-right"} style={{color:AM,fontSize:13,flexShrink:0}}/>
                     <span style={{background:AM,color:WH,borderRadius:6,padding:"3px 11px",fontSize:16,fontWeight:800,letterSpacing:1,fontFamily:"monospace"}}>{reg}</span>
                     {customer&&<span style={{fontSize:13,fontWeight:700,color:TX,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customer}</span>}
                     <div style={{marginLeft:"auto",textAlign:"right",flexShrink:0}}>
                       <div style={{fontSize:16,fontWeight:800,color:B,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{total.toLocaleString("sv-SE")} kr</div>
-                      <div style={{fontSize:10,color:"#7A4E00",fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</div>
+                      <div style={{fontSize:10,color:AM,fontWeight:700}}>{list.length} {list.length===1?"del":"delar"}</div>
                     </div>
                   </div>
 
@@ -4449,7 +4457,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
                         <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",borderBottom:`1px solid ${BD}30`}}>
                           <div onClick={()=>push("detail",{item:r.item})} style={{flex:1,minWidth:0,cursor:"pointer"}}>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              {r.item.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
+                              {r.item.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{r.item.stockNumber}</span>}
                               <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.item.name}{r.item.side?` — ${r.item.side}`:""}</span>
                             </div>
                           </div>
@@ -4503,7 +4511,7 @@ function ReservationsPage({ items, saveItems, can, isAdmin, currentUser, push, p
           </div>
 
           <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:14,background:BG}}>
-            <div style={{background:AM+"0C",border:`1px solid ${AM}30`,borderRadius:10,padding:14,marginBottom:14}}>
+            <div style={{background:AM+"16",border:`1px solid ${AM}30`,borderRadius:10,padding:14,marginBottom:14}}>
               <div style={{display:"flex",gap:10,marginBottom:10}}>
                 <div style={{flex:1}}>
                   <label style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7}}>Regnummer *</label>
@@ -4883,17 +4891,17 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
             {/* Placering — stor och tydlig */}
             {[item.locationType, item.location].filter(Boolean).length>0&&(
               <div style={{background:B+"0A",borderRadius:10,border:`1px solid ${B}22`,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
-                <i className="fa-solid fa-location-dot" style={{fontSize:20,color:B}}/>
+                <i className="fa-solid fa-location-dot" style={{fontSize:20,color:BX}}/>
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.7,marginBottom:1}}>Placering</div>
-                  <div style={{fontSize:20,fontWeight:800,color:B,lineHeight:1.1}}>{[item.locationType, item.location].filter(Boolean).join(" — ")}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:BX,lineHeight:1.1}}>{[item.locationType, item.location].filter(Boolean).join(" — ")}</div>
                 </div>
               </div>
             )}
 
             {/* Notering — högt upp så den syns direkt */}
             {item.notes&&(
-              <div style={{background:"#FFFBEB",border:`1px solid ${AM}40`,borderRadius:10,padding:"10px 14px",fontSize:13,color:TM,lineHeight:1.5}}>
+              <div style={{background:NOTEBG,border:`1px solid ${AM}40`,borderRadius:10,padding:"10px 14px",fontSize:13,color:TM,lineHeight:1.5}}>
                 <div style={{fontSize:10,fontWeight:700,color:"#9A6B00",textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Notering</div>
                 {item.notes}
               </div>
@@ -4906,11 +4914,11 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
           const siblings = items.filter(i => i.sku?.trim().toLowerCase() === item.sku?.trim().toLowerCase());
           if (siblings.length <= 1) return null;
           return (
-            <div onClick={()=>push("variants",{sku:item.sku})} style={{background:AM+"10",border:`1.5px solid ${AM}40`,borderRadius:10,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+            <div onClick={()=>push("variants",{sku:item.sku})} style={{background:AM+"18",border:`1.5px solid ${AM}40`,borderRadius:10,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
               <i className="fa-solid fa-layer-group" style={{fontSize:20,color:AM}}/>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#7A4E00"}}>Det finns {siblings.length} exemplar av denna del</div>
-                <div style={{fontSize:11,color:"#7A4E00"}}>Olika skick och pris — tryck för att jämföra och välja</div>
+                <div style={{fontWeight:700,fontSize:13,color:AM}}>Det finns {siblings.length} exemplar av denna del</div>
+                <div style={{fontSize:11,color:AM}}>Olika skick och pris — tryck för att jämföra och välja</div>
               </div>
               <i className="fa-solid fa-chevron-right" style={{color:AM,fontSize:13}}/>
             </div>
@@ -4962,7 +4970,7 @@ function DetailPage({ item: initialItem, items, sales, saveItems, saveSales, add
             {reservations.length>0&&(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {reservations.map(r=>(
-                  <div key={r.id} style={{background:AM+"0C",border:`1px solid ${AM}30`,borderRadius:8,padding:"10px 12px"}}>
+                  <div key={r.id} style={{background:AM+"16",border:`1px solid ${AM}30`,borderRadius:8,padding:"10px 12px"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:r.customer||r.note?5:0}}>
                       <span style={{background:AM,color:WH,borderRadius:5,padding:"2px 9px",fontSize:14,fontWeight:800,letterSpacing:.5,fontFamily:"monospace"}}>{r.regNumber}</span>
                       {r.customer&&<span style={{fontSize:13,fontWeight:600,color:TX}}>{r.customer}</span>}
@@ -5368,7 +5376,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
   const dupOem        = f.oem?.trim()         && otherItems.find(i => i.oem?.trim().toLowerCase() === f.oem?.trim().toLowerCase());
 
   const DupWarning = ({ dup, label }) => dup ? (
-    <div onClick={()=>pop() || push?.("detail",{item:dup})} style={{background:AM+"12",border:`1.5px solid ${AM}`,borderRadius:8,padding:"8px 12px",marginTop:4,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+    <div onClick={()=>pop() || push?.("detail",{item:dup})} style={{background:AM+"1A",border:`1.5px solid ${AM}`,borderRadius:8,padding:"8px 12px",marginTop:4,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
       <Icon name="triangle-exclamation" style={{color:AM,flexShrink:0}}/>
       <div style={{flex:1}}>
         <div style={{fontSize:11,fontWeight:700,color:AM}}>⚠ {label} finns redan på: <strong>{dup.name}{dup.side?` — ${dup.side}`:""}</strong> #{dup.stockNumber||"—"}</div>
@@ -5564,7 +5572,7 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
                 onPointerCancel={endImgDrag}
                 style={{position:"relative",touchAction:"none",cursor:dragImgIdx===i?"grabbing":"grab",opacity:dragImgIdx===i?0.5:1,transition:"opacity .1s"}}>
                 <img src={img} alt="" draggable={false} style={{width:70,height:70,objectFit:"cover",borderRadius:8,border:`1px solid ${i===0?B:BD}`,pointerEvents:"none"}}/>
-                {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center",pointerEvents:"none"}}><span style={{background:B,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
+                {i===0&&<div style={{position:"absolute",bottom:-6,left:0,right:0,textAlign:"center",pointerEvents:"none"}}><span style={{background:BX,color:WH,fontSize:8,fontWeight:800,borderRadius:4,padding:"1px 5px"}}>OMSLAG</span></div>}
                 <div style={{position:"absolute",top:2,left:2,width:16,height:16,borderRadius:4,background:"rgba(0,0,0,.35)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
                   <i className="fa-solid fa-grip-vertical" style={{fontSize:9,color:"rgba(255,255,255,.9)"}}/>
                 </div>
@@ -5809,7 +5817,7 @@ function SellPage({ item, items, sales, saveItems, saveSales, currentUser, push,
             {(item.thumb||item.images?.[0])?<img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="wrench" style={{color:MU}}/>}
           </div>
           <div style={{flex:1}}>
-            {item.stockNumber&&<div style={{display:"inline-flex",alignItems:"center",gap:4,background:B,color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,marginBottom:4}}>#{item.stockNumber}</div>}
+            {item.stockNumber&&<div style={{display:"inline-flex",alignItems:"center",gap:4,background:BX,color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,marginBottom:4}}>#{item.stockNumber}</div>}
             <div style={{fontWeight:700,fontSize:15}}>{item.name}{item.side?` — ${item.side}`:""}</div>
             <div style={{fontSize:12,color:MU,marginTop:1}}></div>
             <div style={{fontSize:13,color:MU,marginTop:2}}>I lager: <strong style={{color:sc(item.quantity)}}>{item.quantity} st</strong> &nbsp;·&nbsp; <span style={{color:B,fontWeight:600}}>Ordinarie: {item.price.toLocaleString("sv-SE")} kr/st</span></div>
@@ -6103,7 +6111,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                    {s.itemStockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>#{s.itemStockNumber}</span>}
+                    {s.itemStockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>#{s.itemStockNumber}</span>}
                     <div style={{fontWeight:700,fontSize:14}}>{s.itemName}{s.itemSide?` — ${s.itemSide}`:""}</div>
                   </div>
                 </div>
@@ -6141,7 +6149,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
       {saleDetail&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setSaleDetail(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:WH,borderRadius:14,padding:0,maxWidth:380,width:"100%",maxHeight:"85vh",overflowY:"auto"}}>
-            <div style={{background:B,color:WH,padding:"16px 18px",borderRadius:"14px 14px 0 0"}}>
+            <div style={{background:BX,color:WH,padding:"16px 18px",borderRadius:"14px 14px 0 0"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
                   {saleDetail.itemStockNumber&&<span style={{background:"rgba(255,255,255,.2)",borderRadius:4,padding:"1px 7px",fontSize:11,fontWeight:800}}>#{saleDetail.itemStockNumber}</span>}
@@ -6187,7 +6195,7 @@ function SalesLogPage({ sales, saveSales, items, saveItems, users, can, isAdmin,
                   </div>
                 ))}
               </div>
-              {saleDetail.note&&<div style={{marginTop:12,fontSize:13,color:TM,background:AM+"10",borderRadius:8,padding:10}}>{saleDetail.note}</div>}
+              {saleDetail.note&&<div style={{marginTop:12,fontSize:13,color:TM,background:AM+"18",borderRadius:8,padding:10}}>{saleDetail.note}</div>}
               <Btn full variant="ghost" onClick={()=>{setSaleDetail(null);push("receipt",{sale:saleDetail});}} style={{marginTop:14}}><Icon name="receipt"/> Visa kvitto</Btn>
             </div>
           </div>
@@ -6582,7 +6590,7 @@ function TrashPage({ trash, saveTrash, items, saveItems, currentUser, isAdmin, c
               <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    {entry.stockNumber&&<span style={{background:B,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{entry.stockNumber}</span>}
+                    {entry.stockNumber&&<span style={{background:BX,color:WH,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800,flexShrink:0}}>#{entry.stockNumber}</span>}
                     <span style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.name}{entry.side?` — ${entry.side}`:""}</span>
                   </div>
                   <div style={{fontSize:11,color:MU}}>
