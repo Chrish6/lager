@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, forwardRef } from "react";
 import { VirtuosoGrid, Virtuoso } from "react-virtuoso";
+// Delad, testad beräkningslogik (moms, marginal, lagernummer) — se src/calc.mjs
+// och tests/calc.test.mjs. Körs automatiskt med `npm test`.
+import { exVatToInclVat, inclVatToExVat, nextAvailableStockNumber, checkStockNumberTaken } from "./calc.mjs";
 
 // ── Error Boundary — fångar krascher och visar fel istället för vit skärm ─────
 class ErrorBoundary extends React.Component {
@@ -3911,60 +3914,77 @@ function VariantsPage({ sku, items, sales, can, isAdmin, push, pop, addToCart, t
       />
       <div style={{padding:"14px 14px 60px"}}>
 
-        {/* Shared info banner */}
-        <div style={{background:B+"08",border:`1px solid ${B}20`,borderRadius:10,padding:"12px 14px",marginBottom:16,display:"flex",gap:12,flexWrap:"wrap"}}>
-          {base.make&&<div style={{fontSize:12}}><span style={{color:MU}}>Märke:</span> <strong>{base.make} {base.model}</strong></div>}
-          {base.oem&&<div style={{fontSize:12}}><span style={{color:MU}}>Art.nr:</span> <strong style={{fontFamily:"monospace"}}>{base.oem}</strong></div>}
-          {base.category&&<div style={{fontSize:12}}><span style={{color:MU}}>Kategori:</span> <strong>{base.category}</strong></div>}
-          {(base.yearFrom||base.yearTo)&&<div style={{fontSize:12}}><span style={{color:MU}}>Årsmodell:</span> <strong>{base.yearFrom}–{base.yearTo}</strong></div>}
+        {/* Shared info — spec-rad med små versaler och tydliga värden */}
+        <div style={{background:WH,border:`1px solid ${BD}`,borderRadius:10,padding:"12px 16px",marginBottom:18,display:"flex",gap:22,flexWrap:"wrap"}}>
+          {[
+            ["Märke", base.make&&base.model?`${base.make} ${base.model}`:base.make],
+            ["Art.nr", base.oem],
+            ["Kategori", base.category],
+            ["Årsmodell", (base.yearFrom||base.yearTo)?`${base.yearFrom||""}${base.yearTo?"–"+base.yearTo:""}`:null],
+          ].filter(([,v])=>v).map(([label,val])=>(
+            <div key={label}>
+              <div style={{fontSize:9.5,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.8,marginBottom:2}}>{label}</div>
+              <div style={{fontSize:13,fontWeight:700,color:TX,fontFamily:label==="Art.nr"?"monospace":"inherit"}}>{val}</div>
+            </div>
+          ))}
         </div>
 
-        {/* Exemplar — kompakta rader */}
+        {/* Exemplar — kort med tydlig hierarki och accentkant för valt läge */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {group.map(item=>{
             const isSel = selected?.id===item.id;
-            const cc = c => c?.includes("Gott")?GR:c?.includes("Ny")?BX:c?.includes("spricka")?AM:MU;
+            const cc = condColor(item.condition);
             return (
               <div key={item.id} onClick={()=>setSelected(isSel?null:item)}
-                style={{background:WH,borderRadius:10,border:`2px solid ${isSel?BX:BD}`,boxShadow:isSel?`0 0 0 3px ${B}15`:SH,cursor:"pointer",overflow:"hidden",transition:"border-color .15s,box-shadow .15s"}}>
+                style={{background:WH,borderRadius:12,border:`1px solid ${isSel?BX:BD}`,borderLeft:`4px solid ${isSel?BX:BD}`,boxShadow:isSel?`0 4px 16px ${B}18`:SH,cursor:"pointer",overflow:"hidden",transition:"border-color .15s,box-shadow .15s,transform .1s"}}>
 
-                <div style={{display:"flex",gap:12,padding:14,alignItems:"center"}}>
-                  {/* Small image or icon */}
-                  <div style={{flexShrink:0,width:64,height:64,borderRadius:8,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                <div style={{display:"flex",gap:14,padding:"14px 16px",alignItems:"center"}}>
+                  {/* Bild */}
+                  <div style={{flexShrink:0,width:72,height:72,borderRadius:10,overflow:"hidden",background:BG,border:`1px solid ${BD}`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
                     {(item.thumb||item.images?.[0])
                       ? <img src={item.thumb||item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       : <i className="fa-solid fa-image" style={{fontSize:22,color:BD}}/>
                     }
-                    {(item.hasImages||item.images?.length)>1&&<div style={{position:"absolute",bottom:2,right:2,background:"rgba(0,0,0,.6)",color:WH,borderRadius:3,padding:"1px 4px",fontSize:8,fontWeight:600}}>{item.hasImages||item.images.length}<i className="fa-solid fa-image" style={{marginLeft:2}}/></div>}
+                    {(item.hasImages||item.images?.length)>1&&<div style={{position:"absolute",bottom:3,right:3,background:"rgba(0,0,0,.65)",color:WH,borderRadius:4,padding:"1px 5px",fontSize:8.5,fontWeight:700}}>{item.hasImages||item.images.length}<i className="fa-solid fa-image" style={{marginLeft:3}}/></div>}
                   </div>
 
                   {/* Info */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                      <span style={{background:isSel?BX:"rgba(0,0,0,.75)",color:WH,borderRadius:5,padding:"2px 8px",fontSize:12,fontWeight:800,letterSpacing:.5}}>#{item.stockNumber||"?"}</span>
-                      <div style={{display:"flex",alignItems:"center",gap:4}}>
-                        <div style={{width:7,height:7,borderRadius:"50%",background:cc(item.condition)}}/>
-                        <span style={{fontSize:11,fontWeight:600,color:cc(item.condition)}}>{item.condition?.split(" - ")[1]||item.condition}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <span style={{background:BX,color:WH,borderRadius:6,padding:"2px 9px",fontSize:12,fontWeight:800,letterSpacing:.4,fontFamily:"monospace"}}>#{item.stockNumber||"?"}</span>
+                      <span style={{background:cc+"18",color:cc,borderRadius:20,padding:"2px 10px",fontSize:10.5,fontWeight:700}}>{item.condition?.split(" - ")[1]||item.condition}</span>
+                    </div>
+                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:TX,lineHeight:1,marginBottom:8}}>{item.price.toLocaleString("sv-SE")} kr</div>
+                    <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
+                      {item.location&&(
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.6}}>Placering</div>
+                          <div style={{fontSize:12.5,fontWeight:700,color:TX}}>{item.location}</div>
+                        </div>
+                      )}
+                      <div>
+                        <div style={{fontSize:9,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.6}}>Antal</div>
+                        <div style={{fontSize:12.5,fontWeight:700,color:item.quantity===0?R:GR}}>{item.quantity} st</div>
                       </div>
+                      {item.regNumber&&(
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:MU,textTransform:"uppercase",letterSpacing:.6}}>Reg</div>
+                          <div style={{fontSize:12.5,fontWeight:700,color:TX,fontFamily:"monospace"}}>{item.regNumber}</div>
+                        </div>
+                      )}
                     </div>
-                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:800,color:BX,lineHeight:1,marginBottom:3}}>{item.price.toLocaleString("sv-SE")} kr</div>
-                    <div style={{fontSize:11,color:MU,display:"flex",gap:10,flexWrap:"wrap"}}>
-                      {item.location&&<span>Placering: <strong style={{color:TX}}>{item.location}</strong></span>}
-                      <span>Antal: <strong style={{color:item.quantity===0?R:GR}}>{item.quantity} st</strong></span>
-                      {item.regNumber&&<span>Reg: <strong style={{color:BX}}>{item.regNumber}</strong></span>}
-                    </div>
-                    {item.notes&&<div style={{fontSize:11,color:TM,marginTop:4,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{item.notes}"</div>}
+                    {item.notes&&<div style={{fontSize:11.5,color:TM,marginTop:8,display:"flex",alignItems:"center",gap:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><i className="fa-solid fa-note-sticky" style={{color:AM,flexShrink:0,fontSize:10}}/>{item.notes}</div>}
                   </div>
 
-                  {/* Selection indicator */}
-                  <div style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:`2px solid ${isSel?BX:BD}`,background:isSel?BX:WH,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {isSel&&<i className="fa-solid fa-check" style={{fontSize:10,color:WH}}/>}
+                  {/* Valindikator */}
+                  <div style={{flexShrink:0,width:22,height:22,borderRadius:6,border:`2px solid ${isSel?BX:BD}`,background:isSel?BX:"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .1s"}}>
+                    {isSel&&<i className="fa-solid fa-check" style={{fontSize:11,color:WH}}/>}
                   </div>
                 </div>
 
-                {/* Action buttons — shown when selected */}
+                {/* Åtgärdsknappar — visas när kortet är valt */}
                 {isSel&&(
-                  <div style={{display:"flex",gap:8,padding:"0 14px 14px"}} onClick={e=>e.stopPropagation()}>
+                  <div style={{display:"flex",gap:8,padding:"0 16px 14px"}} onClick={e=>e.stopPropagation()}>
                     <Btn variant="ghost" onClick={()=>push("detail",{item})}><i className="fa-solid fa-circle-info"/> Detaljer</Btn>
                     {(can("canSell")||isAdmin)&&item.quantity>0&&(
                       <Btn variant="red" onClick={()=>push("sell",{item})}><i className="fa-solid fa-tag"/> Sälj</Btn>
@@ -5310,21 +5330,12 @@ const H = ({children}) => <div style={{flex:1,minWidth:0}}>{children}</div>;
 // ─── Edit Page ────────────────────────────────────────────────────────────────
 function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUser, logActivity, trash }) {
   const CATS = lists?.categories||CATEGORIES, CONDS = lists?.conditions||CONDITIONS, SIDS = lists?.sides||SIDES, LOCTYPES = lists?.locationTypes||LOCATION_TYPES;
-  const nextStockNumber = () => {
-    // Lagernummer som ligger i papperskorgen är fortfarande "upptagna" tills de
-    // rensas permanent — annars skulle en ny del kunna få samma nummer som en
-    // del som väntar på att bli återställd.
-    const used = new Set([
-      ...items.map(i => parseInt(i.stockNumber||"0")),
-      ...(trash||[]).map(t => parseInt(t.stockNumber||"0")),
-    ].filter(n=>!isNaN(n)&&n>0));
-    let n = 1;
-    while (used.has(n)) n++;
-    return String(n);
-  };
-  const [f, setF] = useState(item ? {...item} : {name:"",stockNumber:nextStockNumber(),side:"",category:"Skärmar",quantity:1,price:0,costPrice:0,supplier:"",location:"",weight:"",colorCode:"",oem:"",description:"",condition:"Begagnad - Gott skick",compatible:"",make:"",model:"",yearFrom:"",yearTo:"",regNumber:"",notes:"",images:[]});
+  // Lagernummer som ligger i papperskorgen räknas som upptagna tills de
+  // rensas permanent — annars skulle en ny del kunna kapa numret från en
+  // del som väntar på att återställas. Se src/calc.mjs (testad funktion).
+  const [f, setF] = useState(item ? {...item} : {name:"",stockNumber:nextAvailableStockNumber(items, trash), side:"",category:"Skärmar",quantity:1,price:0,costPrice:0,supplier:"",location:"",weight:"",colorCode:"",oem:"",description:"",condition:"Begagnad - Gott skick",compatible:"",make:"",model:"",yearFrom:"",yearTo:"",regNumber:"",notes:"",images:[]});
   // Pris exkl. moms (härlett från lagrat inkl-moms-pris; 25% moms)
-  const [priceExVat, setPriceExVat] = useState(item && item.price ? String(Math.round(item.price/1.25)) : "");
+  const [priceExVat, setPriceExVat] = useState(item && item.price ? String(inclVatToExVat(item.price)) : "");
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const fRef = useRef(); const cRef = useRef();
 
@@ -5368,11 +5379,11 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
     }
   }, [item?.id]);
 
-  // ── Duplicate detection ────────────────────────────────────────────────────
+  // ── Duplicate detection (lagernummer via testad funktion, se src/calc.mjs) ──
   const otherItems = items.filter(i => i.id !== f.id);
-  const dupStockNumberActive = f.stockNumber?.trim() && otherItems.find(i => i.stockNumber?.trim() === f.stockNumber?.trim());
-  const dupStockNumberTrash  = f.stockNumber?.trim() && !dupStockNumberActive && (trash||[]).find(t => t.stockNumber?.trim() === f.stockNumber?.trim());
-  const dupStockNumber = dupStockNumberActive || dupStockNumberTrash;
+  const stockCheck = checkStockNumberTaken(f.stockNumber, items, trash||[], f.id);
+  const dupStockNumber = stockCheck.taken ? stockCheck.item : null;
+  const dupStockNumberTrash = stockCheck.taken && stockCheck.byTrash ? stockCheck.item : null;
   const dupOem        = f.oem?.trim()         && otherItems.find(i => i.oem?.trim().toLowerCase() === f.oem?.trim().toLowerCase());
 
   const DupWarning = ({ dup, label }) => dup ? (
@@ -5613,11 +5624,11 @@ function EditPage({ item, items, saveItems, lists, pop, push, toast$, currentUse
             <G2>
               <H>
                 <Inp label="Pris exkl. moms (kr)" type="number" min="0" value={priceExVat}
-                  onChange={e=>{ const ex=Number(e.target.value)||0; setPriceExVat(e.target.value); set("price", Math.round(ex*1.25)); }}/>
+                  onChange={e=>{ const ex=Number(e.target.value)||0; setPriceExVat(e.target.value); set("price", exVatToInclVat(ex)); }}/>
               </H>
               <H>
                 <Inp label="Försäljningspris inkl. moms (kr)" type="number" min="0" value={f.price}
-                  onChange={e=>{ const inc=Number(e.target.value)||0; set("price", inc); setPriceExVat(inc? String(Math.round(inc/1.25)) : ""); }}/>
+                  onChange={e=>{ const inc=Number(e.target.value)||0; set("price", inc); setPriceExVat(inc? String(inclVatToExVat(inc)) : ""); }}/>
               </H>
             </G2>
             <div style={{fontSize:11,color:MU,marginTop:6}}>
